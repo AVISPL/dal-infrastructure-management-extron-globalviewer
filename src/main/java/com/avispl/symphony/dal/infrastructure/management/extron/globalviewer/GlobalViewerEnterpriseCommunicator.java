@@ -1,8 +1,11 @@
 /** Copyright (c) 2026 AVI-SPL, Inc. All Rights Reserved. */
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer;
 
+import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Properties;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -11,19 +14,34 @@ import org.apache.commons.collections.CollectionUtils;
 
 import com.avispl.symphony.api.dal.control.Controller;
 import com.avispl.symphony.api.dal.dto.control.ControllableProperty;
+import com.avispl.symphony.api.dal.dto.monitor.ExtendedStatistics;
 import com.avispl.symphony.api.dal.dto.monitor.Statistics;
 import com.avispl.symphony.api.dal.dto.monitor.aggregator.AggregatedDevice;
 import com.avispl.symphony.api.dal.monitor.Monitorable;
 import com.avispl.symphony.api.dal.monitor.aggregator.Aggregator;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.BaseCommunicator;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.constants.Constant;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.MonitoringUtil;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 
 /**
  * @author Kevin / Symphony Dev Team
  * @since 1.0.0
  */
 public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator implements Aggregator, Monitorable, Controller {
+	/** Application configuration loaded from {@code version.properties}. */
+	private final Properties versionProperties;
+	/** Device adapter instantiation timestamp. */
+	private final long adapterInitializationTimestamp;
+	/** Stores extended statistics to be sent to the adapter. */
+	private final ExtendedStatistics localExtendedStatistics;
+
 	public GlobalViewerEnterpriseCommunicator() {
 		super();
+		this.versionProperties = new Properties();
+		this.adapterInitializationTimestamp = System.currentTimeMillis();
+		this.localExtendedStatistics = new ExtendedStatistics();
+		this.localExtendedStatistics.setStatistics(new HashMap<>());
 	}
 
 	@Override
@@ -38,17 +56,30 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	protected void internalInit() throws Exception {
+		this.loadVersionProperties(this.versionProperties);
 		super.internalInit();
 	}
 
 	@Override
 	protected void internalDestroy() {
+		this.versionProperties.clear();
+		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
 	}
 
 	@Override
 	public List<Statistics> getMultipleStatistics() throws Exception {
-		return Collections.emptyList();
+		this.reentrantLock.lock();
+		try {
+			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
+					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
+			));
+
+			this.localExtendedStatistics.setStatistics(statistics);
+		} finally {
+			this.reentrantLock.unlock();
+		}
+		return Collections.singletonList(this.localExtendedStatistics);
 	}
 
 	@Override
@@ -73,6 +104,24 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 		for (ControllableProperty controllableProperty : controllableProperties) {
 			this.controlProperty(controllableProperty);
+		}
+	}
+
+	/**
+	 * Loads version properties and sets initial values used to create Adapter metadata group.
+	 *
+	 * @param versionProperties the properties to load and set default values
+	 */
+	private void loadVersionProperties(Properties versionProperties) {
+		try {
+			versionProperties.load(this.getClass().getResourceAsStream("/version.properties"));
+			versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(), Constant.NOT_AVAILABLE);
+			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
+			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), Constant.NOT_AVAILABLE);
+			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), Constant.NOT_AVAILABLE);
+			versionProperties.setProperty(General.SYSTEM_MONITORING_CYCLE_INTERVAL.getProperty(), Constant.NOT_AVAILABLE);
+		} catch (IOException e) {
+			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
 		}
 	}
 }
