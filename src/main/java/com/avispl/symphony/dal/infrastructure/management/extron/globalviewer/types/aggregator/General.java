@@ -1,6 +1,7 @@
 /** Copyright (c) 2026 AVI-SPL, Inc. All Rights Reserved. */
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator;
 
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
@@ -13,7 +14,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
  * @author Kevin / Symphony Dev Team
  * @since 1.0.0
  */
-@FieldDefaults(makeFinal = true)
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Getter
 @AllArgsConstructor
 public enum General implements BaseProperty {
