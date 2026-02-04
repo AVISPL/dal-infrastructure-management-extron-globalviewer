@@ -21,7 +21,9 @@ public final class Constant {
 
 	//	Warning messages
 	public static final String INVALID_VALUE_WARNING = "The value is invalid(%s), returning null.";
+	public static final String FETCHED_DATA_NULL_WARNING = "Fetched data is null. Endpoint: %s, ResponseClass: %s";
 
 	//	Fail messages
 	public static final String READ_PROPERTIES_FILE_FAILED = "Failed to load version properties file.";
+	public static final String FETCH_DATA_FAILED = "Device monitoring cannot proceed, the required data could not be fetched from the %s endpoint.";
 }

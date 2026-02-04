@@ -10,6 +10,8 @@ import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -24,6 +26,7 @@ import com.avispl.symphony.dal.util.StringUtils;
  * @author Kevin / Symphony Dev Team
  * @since 1.0.0
  */
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class MonitoringUtil {
 	private static final Log LOG = LogFactory.getLog(MonitoringUtil.class);
 
