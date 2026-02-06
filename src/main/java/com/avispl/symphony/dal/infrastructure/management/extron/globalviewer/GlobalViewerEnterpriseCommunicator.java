@@ -119,7 +119,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
 			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), Constant.NOT_AVAILABLE);
 			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), Constant.NOT_AVAILABLE);
-			versionProperties.setProperty(General.SYSTEM_MONITORING_CYCLE_INTERVAL.getProperty(), Constant.NOT_AVAILABLE);
+			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
 		}
