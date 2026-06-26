@@ -28,10 +28,10 @@ class GlobalViewerEnterpriseCommunicatorTest {
 	@BeforeEach
 	void setUp() throws Exception {
 		this.communicator = new GlobalViewerEnterpriseCommunicator();
-		this.communicator.setHost("extrongve.vnoc1.chicago");
+		this.communicator.setHost("");
 		this.communicator.setPort(80);
-		this.communicator.setLogin("hieu.leminh");
-		this.communicator.setPassword("P@$$w0rd123456");
+		this.communicator.setLogin("*******");
+		this.communicator.setPassword("*******");
 		this.communicator.init();
 	}
 
