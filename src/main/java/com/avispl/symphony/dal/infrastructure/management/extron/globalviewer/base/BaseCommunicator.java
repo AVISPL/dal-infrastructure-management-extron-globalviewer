@@ -1,18 +1,24 @@
 /** Copyright (c) 2026 AVI-SPL, Inc. All Rights Reserved. */
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base;
 
+import com.avispl.symphony.api.dal.error.ResourceNotReachableException;
+import com.avispl.symphony.dal.communicator.RestCommunicator;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.models.APIResponse;
+import com.avispl.symphony.dal.util.StringUtils;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import javax.security.auth.login.FailedLoginException;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
-
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import javax.security.auth.login.FailedLoginException;
-
-import com.avispl.symphony.dal.communicator.RestCommunicator;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.constants.Constant;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.ResponseType;
 
 /**
  * Configures the communicator and provides helper methods for managing adapter properties.
@@ -21,60 +27,61 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
  * @author Kevin / Symphony Dev Team
  * @since 1.0.0
  */
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class BaseCommunicator extends RestCommunicator {
 	/** Lock for thread-safe operations. */
-	protected final ReentrantLock reentrantLock;
-	/** Object mapper used to convert JSON responses into Java objects. */
-	private final ObjectMapper objectMapper;
-
-	protected BaseCommunicator() {
-		this.reentrantLock = new ReentrantLock();
-		this.objectMapper = new ObjectMapper();
-	}
+	protected final ReentrantLock reentrantLock = new ReentrantLock();
+	/** Stores the session ID extracted from the response cookie upon successful authentication. */
+	private String sessionID = "";
 
 	@Override
 	protected void internalInit() throws Exception {
 		this.setAuthenticationScheme(AuthenticationScheme.None);
 		this.setTrustAllCertificates(true);
+		this.setBaseUri("/GVE/api");
 		super.internalInit();
 	}
 
-	/**
-	 * Fetches data from a given endpoint and maps the response to the specified type defined in {@link ResponseType}.
-	 *
-	 * @param endpoint the target endpoint to fetch data from
-	 * @param responseType defines how to extract and map the response into a specific class
-	 * @param <T> the generic type representing the expected response object
-	 * @return the mapped response object, or {@code null} if the response is empty or mapping fails
-	 * @throws FailedLoginException if authentication fails while accessing the endpoint
-	 * @throws IllegalStateException if an unexpected error occurs while fetching or processing the response
-	 */
-	public <T> T fetchData(String endpoint, ResponseType responseType) throws FailedLoginException {
-		String previewedResponse = null;
-		try {
-			String response = Optional.ofNullable(super.doGet(endpoint)).map(String::trim).orElse(null);
-			if (response == null || response.isBlank()) {
-				this.logger.warn("Empty response from endpoint '%s'".formatted(endpoint));
-				return null;
-			}
-			previewedResponse = response.substring(0, Math.min(150, response.length()));
-			JsonNode responseNode = responseType.extractNode(this.objectMapper.readTree(response));
-			@SuppressWarnings("unchecked")
-			T mappedResponse = responseType.isCollection()
-					? (T) this.objectMapper.convertValue(responseNode, responseType.getTypeRef(this.objectMapper))
-					: (T) this.objectMapper.treeToValue(responseNode, responseType.getClazz());
-			if (Objects.isNull(mappedResponse)) {
-				this.logger.warn(String.format(Constant.FETCHED_DATA_NULL_WARNING, endpoint, responseType.getClazz().getSimpleName()));
-			}
-
-			return mappedResponse;
-		} catch (FailedLoginException e) {
-			throw e;
-		} catch (JacksonException e) {
-			this.logger.error("Failed to parse JSON from endpoint %s, preview: %s".formatted(endpoint, previewedResponse), e);
-			return null;
-		} catch (Exception e) {
-			throw new IllegalStateException(Constant.FETCH_DATA_FAILED.formatted(endpoint), e);
+	@Override
+	protected void authenticate() throws Exception {
+		if (StringUtils.isNullOrEmpty(this.getLogin(), true) || StringUtils.isNullOrEmpty(this.getPassword(), true)) {
+			throw new FailedLoginException("Failed to authenticate, the username or password has not provided");
 		}
+		// 	Already authenticated - reuse existing session ID
+		if (StringUtils.isNotNullOrEmpty(this.sessionID)) {
+			return;
+		}
+		var loginUrl = UriComponentsBuilder.newInstance()
+				.scheme(this.getProtocol()).host(this.host).port(this.getPort())
+				.path(this.getBaseUri()).path(Constant.AUTH_ENDPOINT)
+				.toUriString();
+		try {
+			//	Send login API to get session ID from cookie header
+			var request = new HttpEntity<>(Map.of("UserName", this.getLogin(), "Password", this.getPassword()));
+			var response = this.obtainRestTemplate().exchange(loginUrl, HttpMethod.POST, request, APIResponse.class);
+			//	Validate the credentials
+			var responseBody = Objects.requireNonNullElseGet(response.getBody(), APIResponse::new);
+			var status = responseBody.getResponseStatus();
+			if (status != null && "Login Failed".equals(status.getMessage())) {
+				throw new FailedLoginException("Invalid authentication credentials for " + loginUrl);
+			}
+			//	Validate the session ID
+			this.sessionID = Optional.of(response.getHeaders().get(HttpHeaders.SET_COOKIE))
+					.filter(cookies -> !cookies.isEmpty()).map(cookies -> cookies.get(0))
+					.orElseThrow(() -> new FailedLoginException("Failed to authenticate, session ID missing from response header"));
+			if (StringUtils.isNullOrEmpty(this.sessionID, true)) {
+				throw new FailedLoginException("Failed to authenticate, the session ID is null or empty");
+			}
+		} catch (ResourceAccessException e) {
+			throw new ResourceNotReachableException("Cannot reach resource at " + loginUrl, e);
+		}
+	}
+
+	@Override
+	protected HttpHeaders putExtraRequestHeaders(HttpMethod httpMethod, String uri, HttpHeaders headers) throws Exception {
+		if (!"/login".equals(uri)) {
+			headers.set(HttpHeaders.COOKIE, this.sessionID);
+		}
+		return super.putExtraRequestHeaders(httpMethod, uri, headers);
 	}
 }

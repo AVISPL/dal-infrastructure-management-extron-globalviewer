@@ -16,7 +16,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.BaseProperty;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.constants.Constant;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.util.StringUtils;
 
