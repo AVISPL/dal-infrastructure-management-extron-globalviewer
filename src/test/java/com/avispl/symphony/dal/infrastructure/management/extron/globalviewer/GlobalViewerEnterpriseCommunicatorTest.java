@@ -2,6 +2,7 @@
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.avispl.symphony.api.dal.dto.monitor.ExtendedStatistics;
+import com.avispl.symphony.api.dal.dto.monitor.aggregator.AggregatedDevice;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 
 import javax.security.auth.login.FailedLoginException;
@@ -26,10 +28,10 @@ class GlobalViewerEnterpriseCommunicatorTest {
 	@BeforeEach
 	void setUp() throws Exception {
 		this.communicator = new GlobalViewerEnterpriseCommunicator();
-		this.communicator.setHost("");
+		this.communicator.setHost("extrongve.vnoc1.chicago");
 		this.communicator.setPort(80);
-		this.communicator.setLogin("");
-		this.communicator.setPassword("");
+		this.communicator.setLogin("hieu.leminh");
+		this.communicator.setPassword("P@$$w0rd123456");
 		this.communicator.init();
 	}
 
@@ -67,5 +69,15 @@ class GlobalViewerEnterpriseCommunicatorTest {
 		return statistics.entrySet().stream()
 				.filter(e -> (groupName == null) ? !e.getKey().contains("#") : e.getKey().startsWith(groupName))
 				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+	}
+
+	@Test
+	void testGetAggregatedData() throws Exception {
+		communicator.getMultipleStatistics();
+		communicator.retrieveMultipleStatistics();
+		Thread.sleep(20000);
+		extendedStatistics = (ExtendedStatistics) communicator.getMultipleStatistics().get(0);
+		List<AggregatedDevice> aggregatedDeviceList = communicator.retrieveMultipleStatistics();
+		System.out.println("aggregatedDeviceList: " + aggregatedDeviceList);
 	}
 }
