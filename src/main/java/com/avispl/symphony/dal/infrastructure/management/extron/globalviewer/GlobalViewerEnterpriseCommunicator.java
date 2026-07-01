@@ -1,17 +1,6 @@
 /** Copyright (c) 2026 AVI-SPL, Inc. All Rights Reserved. */
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer;
 
-import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Properties;
-
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-
-import org.apache.commons.collections.CollectionUtils;
-
 import com.avispl.symphony.api.dal.control.Controller;
 import com.avispl.symphony.api.dal.dto.control.ControllableProperty;
 import com.avispl.symphony.api.dal.dto.monitor.ExtendedStatistics;
@@ -20,11 +9,20 @@ import com.avispl.symphony.api.dal.dto.monitor.aggregator.AggregatedDevice;
 import com.avispl.symphony.api.dal.monitor.Monitorable;
 import com.avispl.symphony.api.dal.monitor.aggregator.Aggregator;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.BaseCommunicator;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.constants.Constant;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.MonitoringUtil;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
+import org.apache.commons.collections.CollectionUtils;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Properties;
 
 /**
+ * GlobalViewerEnterpriseCommunicator class
+ *
  * @author Kevin / Symphony Dev Team
  * @since 1.0.0
  */
@@ -45,16 +43,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	@Override
-	protected void authenticate() throws Exception {
-
-	}
-
-	@Override
-	protected HttpHeaders putExtraRequestHeaders(HttpMethod httpMethod, String uri, HttpHeaders headers) throws Exception {
-		return super.putExtraRequestHeaders(httpMethod, uri, headers);
-	}
-
-	@Override
 	protected void internalInit() throws Exception {
 		this.loadVersionProperties(this.versionProperties);
 		super.internalInit();
@@ -71,6 +59,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	public List<Statistics> getMultipleStatistics() throws Exception {
 		this.reentrantLock.lock();
 		try {
+			this.authenticate();
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));

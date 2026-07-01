@@ -11,7 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.avispl.symphony.api.dal.dto.monitor.ExtendedStatistics;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.constants.Constant;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
+
+import javax.security.auth.login.FailedLoginException;
 
 /**
  * @author Kevin / Symphony Dev Team
@@ -25,17 +27,21 @@ class GlobalViewerEnterpriseCommunicatorTest {
 	void setUp() throws Exception {
 		this.communicator = new GlobalViewerEnterpriseCommunicator();
 		this.communicator.setHost("");
-		this.communicator.setPort(443);
+		this.communicator.setPort(80);
 		this.communicator.setLogin("");
 		this.communicator.setPassword("");
 		this.communicator.init();
-		this.communicator.connect();
 	}
 
 	@AfterEach
 	void destroy() throws Exception {
 		this.communicator.disconnect();
 		this.communicator.destroy();
+	}
+
+	@Test
+	void testAuthentication_WithInvalidCredential() {
+		Assertions.assertThrows(FailedLoginException.class, () -> this.communicator.getMultipleStatistics());
 	}
 
 	@Test
