@@ -17,12 +17,19 @@ public final class Constant {
 
 	//	Values
 	public static final String NOT_AVAILABLE = "N/A";
+	public static final String NONE = "None";
+	public static final String EMPTY = "";
+	public static final String ONLINE = "Online";
+	public static final String ON = "On";
 
 	//	Endpoint
 	public static final String AUTH_ENDPOINT = "/auth";
+	public static final String DEVICES_ENDPOINT = "/devices";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
+
+	public static final String DEVICES = "Devices";
 
 	//	Warning messages
 	public static final String INVALID_VALUE_WARNING = "The value is invalid(%s), returning null.";
