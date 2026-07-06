@@ -87,13 +87,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private volatile long validRetrieveStatisticsTimestamp;
 
 	/**
-	 * Aggregator inactivity timeout. If the {@link GlobalViewerEnterpriseCommunicator#retrieveMultipleStatistics()}  method is not
-	 * called during this period of time - device is considered to be paused, thus the Cloud API
-	 * is not supposed to be called
-	 */
-	private static final long retrieveStatisticsTimeOut = 3 * 60 * 1000;
-
-	/**
 	 * Cached data
 	 */
 	private final Map<String, Map<String, String>> cachedMonitoringDevice = Collections.synchronizedMap(new HashMap<>());
@@ -120,10 +113,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Uptime time stamp to valid one
+	 * Uptime time stamp to valid one, based on the current polling cycle interval
 	 */
 	private synchronized void updateValidRetrieveStatisticsTimestamp() {
-		validRetrieveStatisticsTimestamp = System.currentTimeMillis() + retrieveStatisticsTimeOut;
+		validRetrieveStatisticsTimestamp = System.currentTimeMillis() + getMonitoringRate() * 60 * 1000L;
 		updateAggregatorStatus();
 	}
 
@@ -207,13 +200,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	protected void internalInit() throws Exception {
+		super.internalInit();
 		if (logger.isDebugEnabled()) {
 			logger.debug("Internal init is called.");
 		}
 		executorService = Executors.newFixedThreadPool(1);
 		executorService.submit(deviceDataLoader = new GlobalViewerEnterpriseDataLoader());
 		this.loadVersionProperties(this.versionProperties);
-		super.internalInit();
 	}
 
 	@Override
@@ -238,6 +231,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		this.reentrantLock.lock();
 		try {
 			this.authenticate();
+			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), String.valueOf(cachedMonitoringDevice.size()));
+			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), String.valueOf(lastMonitoringCycleDuration));
+
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
@@ -343,7 +339,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				cachedMonitoringDevice.putAll(nextDeviceCache);
 			}
 		} catch (Exception e){
-			 throw new ResourceNotReachableException("Unable to retrieve names from response.", e);
+			 throw new RuntimeException("Unable to retrieve names from response.", e);
 		}
 	}
 
