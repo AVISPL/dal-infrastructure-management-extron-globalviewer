@@ -36,7 +36,7 @@ public final class Util {
 	}
 
 	/**
-	 * Add addAdvancedControlProperties if advancedControllableProperties different empty
+	 * Add a controllable property to the list, removing any existing entry with the same name to avoid duplicates
 	 *
 	 * @param advancedControllableProperties advancedControllableProperties is the list that store all controllable properties
 	 * @param stats store all statistics
