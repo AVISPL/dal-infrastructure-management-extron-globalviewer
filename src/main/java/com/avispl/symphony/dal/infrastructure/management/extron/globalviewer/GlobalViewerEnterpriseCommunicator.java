@@ -16,6 +16,8 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.location.LocationProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
 
@@ -92,6 +94,20 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedMonitoringDevice = Collections.synchronizedMap(new HashMap<>());
 
 	/**
+	 * Cached GVE Room data, keyed by {@link RoomProperty#ID}. Exposed as adapter/aggregator-level
+	 * statistics (see {@link #getMultipleStatistics()}), one dynamic {@code GVERoom_<ID>#} group per
+	 * cached room - this is NOT a per-device property.
+	 */
+	private final Map<String, Map<String, String>> cachedRooms = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached GVE Location data, keyed by {@link LocationProperty#ID}. Exposed as adapter/aggregator-level
+	 * statistics (see {@link #getMultipleStatistics()}), one dynamic {@code GVELocation_<ID>#} group per
+	 * cached location - this is NOT a per-device property.
+	 */
+	private final Map<String, Map<String, String>> cachedLocations = Collections.synchronizedMap(new HashMap<>());
+
+	/**
 	 * List of aggregated devices populated from {@link #cachedMonitoringDevice}.
 	 */
 	private final List<AggregatedDevice> aggregatedDeviceList = Collections.synchronizedList(new ArrayList<>());
@@ -160,6 +176,22 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					long startCycle = System.currentTimeMillis();
 					try {
 						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching rooms list");
+						}
+						populateRoomList();
+					} catch (Exception e) {
+						logger.error("Error occurred during room list retrieval: " + e.getMessage(), e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching locations list");
+						}
+						populateLocationList();
+					} catch (Exception e) {
+						logger.error("Error occurred during location list retrieval: " + e.getMessage(), e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
 							logger.debug("Fetching devices list");
 						}
 						populateListDevice();
@@ -221,6 +253,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 		this.versionProperties.clear();
 		cachedMonitoringDevice.clear();
+		cachedRooms.clear();
+		cachedLocations.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -237,6 +271,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
+			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
+			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
 
 			this.localExtendedStatistics.setStatistics(statistics);
 		} finally {
@@ -312,45 +348,102 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * Any error during the process is logged.
 	 */
 	private void populateListDevice() {
-		try{
-			String jsonResult = this.doGet(Constant.DEVICES_ENDPOINT);
-			if (logger.isDebugEnabled()) {
-				logger.debug(String.format("Device list response received. length=%s", jsonResult == null ? -1 : jsonResult.length()));
-			}
-			JsonNode listResponse = objectMapper.readTree(jsonResult);
-			if (listResponse == null || !listResponse.has(Constant.DEVICES) || listResponse.get(Constant.DEVICES).isEmpty()) {
-				return;
-			}
-			JsonNode data = listResponse.path(Constant.DEVICES);
-			if (data == null || !data.isArray() || data.isEmpty()) {
-				return;
-			}
-			Map<String, Map<String, String>> nextDeviceCache = new HashMap<>();
-			for (JsonNode node : data) {
-				String deviceId = extractValue(node, AggregatedGeneralProperty.DEVICE_ID);
-				if (Constant.NOT_AVAILABLE.equals(deviceId)) {
-					continue;
-				}
-				Map<String, String> mappingValue = new HashMap<>();
-				for (AggregatedGeneralProperty info : AggregatedGeneralProperty.values()) {
-					String value = extractValue(node, info);
-					// Conditional properties (e.g. secondary/tertiary/quaternary lamp trackers, which only
-					// exist for devices with that many physical lamps) are dropped entirely when their field
-					// doesn't resolve, rather than being cached as N/A - see AggregatedGeneralProperty.
-					if (value == null) {
-						continue;
-					}
-					mappingValue.put(info.getName(), value);
-				}
-				nextDeviceCache.put(deviceId, mappingValue);
-			}
+		try {
+			Map<String, Map<String, String>> nextDeviceCache = fetchEntityList(Constant.DEVICES_ENDPOINT, Constant.DEVICES,
+					AggregatedGeneralProperty.DEVICE_ID, AggregatedGeneralProperty.values());
 			synchronized (cachedMonitoringDevice) {
 				cachedMonitoringDevice.clear();
 				cachedMonitoringDevice.putAll(nextDeviceCache);
 			}
-		} catch (Exception e){
-			 throw new RuntimeException("Unable to retrieve names from response.", e);
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve devices from response.", e);
 		}
+	}
+
+	/**
+	 * Populates the GVE Room cache ({@link #cachedRooms}) by making a GET request to {@code /rooms}.
+	 * Exposed as adapter-level statistics in {@link #getMultipleStatistics()}. Any error during the
+	 * process is logged.
+	 */
+	private void populateRoomList() {
+		try {
+			Map<String, Map<String, String>> nextRoomCache = fetchEntityList(Constant.ROOMS_ENDPOINT, Constant.ROOMS,
+					RoomProperty.ID, RoomProperty.values());
+			synchronized (cachedRooms) {
+				cachedRooms.clear();
+				cachedRooms.putAll(nextRoomCache);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve rooms from response.", e);
+		}
+	}
+
+	/**
+	 * Populates the GVE Location cache ({@link #cachedLocations}) by making a GET request to
+	 * {@code /locations}. Exposed as adapter-level statistics in {@link #getMultipleStatistics()}. Any
+	 * error during the process is logged.
+	 */
+	private void populateLocationList() {
+		try {
+			Map<String, Map<String, String>> nextLocationCache = fetchEntityList(Constant.LOCATIONS_ENDPOINT, Constant.LOCATIONS,
+					LocationProperty.ID, LocationProperty.values());
+			synchronized (cachedLocations) {
+				cachedLocations.clear();
+				cachedLocations.putAll(nextLocationCache);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve locations from response.", e);
+		}
+	}
+
+	/**
+	 * Fetches a list of entities (devices, rooms, or locations) from the given endpoint, extracting each
+	 * entity's properties via {@code properties}' {@link FieldProperty} pointers, keyed by
+	 * {@code idProperty}'s resolved value. Shared by {@link #populateListDevice()},
+	 * {@link #populateRoomList()} and {@link #populateLocationList()}, whose list responses all follow the
+	 * same {@code { "<WrapperKey>": [...], "ResponseStatus": {} } } shape.
+	 *
+	 * @param endpoint the endpoint to GET
+	 * @param wrapperKey the JSON key wrapping the array of entities (e.g. {@link Constant#DEVICES})
+	 * @param idProperty the property used as the resulting map's key
+	 * @param properties all properties to extract for each entity
+	 * @param <T> the enum type implementing {@link FieldProperty}
+	 * @return a map of entity ID to its extracted property name/value pairs; empty if the response is empty/malformed
+	 * @throws Exception if the request itself fails
+	 */
+	private <T extends Enum<T> & FieldProperty> Map<String, Map<String, String>> fetchEntityList(String endpoint, String wrapperKey, T idProperty, T[] properties) throws Exception {
+		String jsonResult = this.doGet(endpoint);
+		if (logger.isDebugEnabled()) {
+			logger.debug(String.format("Response received from %s. length=%s", endpoint, jsonResult == null ? -1 : jsonResult.length()));
+		}
+		JsonNode listResponse = objectMapper.readTree(jsonResult);
+		if (listResponse == null || !listResponse.has(wrapperKey) || listResponse.get(wrapperKey).isEmpty()) {
+			return Collections.emptyMap();
+		}
+		JsonNode data = listResponse.path(wrapperKey);
+		if (!data.isArray() || data.isEmpty()) {
+			return Collections.emptyMap();
+		}
+		Map<String, Map<String, String>> result = new HashMap<>();
+		for (JsonNode node : data) {
+			String id = extractValue(node, idProperty);
+			if (Constant.NOT_AVAILABLE.equals(id)) {
+				continue;
+			}
+			Map<String, String> mappingValue = new HashMap<>();
+			for (T info : properties) {
+				String value = extractValue(node, info);
+				// Conditional properties (e.g. secondary/tertiary/quaternary lamp trackers, which only
+				// exist for devices with that many physical lamps) are dropped entirely when their field
+				// doesn't resolve, rather than being cached as N/A - see FieldProperty#isConditional().
+				if (value == null) {
+					continue;
+				}
+				mappingValue.put(info.getName(), value);
+			}
+			result.put(id, mappingValue);
+		}
+		return result;
 	}
 
 	/**
@@ -400,6 +493,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * <p>
 	 * The raw GVE {@code DeviceType} value (the same one exposed as the flat {@code Type} property) is
 	 * also set on the dedicated {@link AggregatedDevice#setCategory(String)} field.
+	 * <p>
+	 * Room and Location data (see {@link RoomProperty}/{@link LocationProperty}) are NOT part of this -
+	 * they're exposed as adapter/aggregator-level statistics instead, see {@link #getMultipleStatistics()}.
 	 *
 	 * @param deviceId the device identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the device
@@ -433,6 +529,50 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Puts every cached entity's (room, location, etc.) properties into {@code stats} as its own dynamic
+	 * group, keyed by the entity's own ID (the {@code idProperty} value used to key {@code cachedEntities}
+	 * doubles as the group suffix - see {@link Constant#INDEXED_GROUP_FORMAT}), e.g.
+	 * {@code GVERoom_101#Name}, {@code GVERoom_101#Category}, {@code GVERoom_102#Name}, ...
+	 * <p>
+	 * Used to expose {@link #cachedRooms}/{@link #cachedLocations} as adapter/aggregator-level statistics
+	 * in {@link #getMultipleStatistics()} - unlike {@link #putGroupedProperty(Map, Map, FieldProperty)},
+	 * which places a single instance's properties into a per-device properties map.
+	 *
+	 * @param stats the destination adapter statistics map
+	 * @param cachedEntities cached entities keyed by their own ID, each holding its property name/value pairs
+	 * @param properties all properties to place for each cached entity
+	 * @param <T> the enum type implementing {@link FieldProperty}
+	 */
+	private <T extends Enum<T> & FieldProperty> void putIndexedGroupedProperties(Map<String, String> stats, Map<String, Map<String, String>> cachedEntities, T[] properties) {
+		synchronized (cachedEntities) {
+			for (Map.Entry<String, Map<String, String>> entry : cachedEntities.entrySet()) {
+				for (T property : properties) {
+					putIndexedGroupedProperty(stats, entry.getValue(), property, entry.getKey());
+				}
+			}
+		}
+	}
+
+	/**
+	 * Puts the cached value for the given property into the stats map, prefixing the key with a per-instance
+	 * dynamic group built from the property's base group and {@code instanceId} (see
+	 * {@link Constant#INDEXED_GROUP_FORMAT}), e.g. {@code GVERoom_101#Name}.
+	 *
+	 * @param stats the destination adapter statistics map
+	 * @param cachedData the cached property name/value pairs for the single entity instance
+	 * @param property the property to resolve and place into {@code stats}
+	 * @param instanceId the entity instance's own ID, used to disambiguate its group from other instances
+	 */
+	private void putIndexedGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property, String instanceId) {
+		if (property.isConditional() && !cachedData.containsKey(property.getName())) {
+			return;
+		}
+		String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, property.getGroup(), instanceId);
+		String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+		stats.put(key, cachedData.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
 	}
 
 	/**

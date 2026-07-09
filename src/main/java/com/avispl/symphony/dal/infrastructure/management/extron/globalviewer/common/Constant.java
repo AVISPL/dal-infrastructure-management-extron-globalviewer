@@ -25,13 +25,23 @@ public final class Constant {
 	//	Endpoint
 	public static final String AUTH_ENDPOINT = "/auth";
 	public static final String DEVICES_ENDPOINT = "/devices";
+	public static final String ROOMS_ENDPOINT = "/rooms";
+	public static final String LOCATIONS_ENDPOINT = "/locations";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
 	public static final String LIVE_STATUS_GROUP = "LiveStatus";
+	//	Aggregator-level groups (see "Aggregator > GVE Room"/"Aggregator > GVE Location" in the GVE Adapter
+	//	Property Reference) - one dynamic group per cached room/location instance, e.g. "GVERoom_101#Name".
+	public static final String GVE_ROOM_GROUP = "GVERoom";
+	public static final String GVE_LOCATION_GROUP = "GVELocation";
+	//	Format for building a per-instance group name from a static base group and an entity ID.
+	public static final String INDEXED_GROUP_FORMAT = "%s_%s";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
+	public static final String ROOMS = "Rooms";
+	public static final String LOCATIONS = "Locations";
 
 	//	Warning messages
 	public static final String INVALID_VALUE_WARNING = "The value is invalid(%s), returning null.";
