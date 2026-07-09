@@ -11,6 +11,7 @@ import com.avispl.symphony.api.dal.error.ResourceNotReachableException;
 import com.avispl.symphony.api.dal.monitor.Monitorable;
 import com.avispl.symphony.api.dal.monitor.aggregator.Aggregator;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.BaseCommunicator;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.FieldProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.MonitoringUtil;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
@@ -305,7 +306,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Populates aggregated device list by making a GET request to retrieve information.
-	 * The method clears the existing aggregated device list, processes the response, and updates the list accordingly.
+	 * All of the "Aggregated Device > General" and "Aggregated Device > Live Status" properties
+	 * (see {@link AggregatedGeneralProperty}) are sourced from this single list call - the {@code LiveStatus}
+	 * sub-object has been confirmed to be identical between this endpoint and the per-device
+	 * {@code /devices/{deviceId}} endpoint, so no separate per-device fetch is needed for this data.
 	 * Any error during the process is logged.
 	 */
 	private void populateListDevice() {
@@ -330,7 +334,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 				Map<String, String> mappingValue = new HashMap<>();
 				for (AggregatedGeneralProperty info : AggregatedGeneralProperty.values()) {
-					mappingValue.put(info.getName(), extractValue(node, info));
+					String value = extractValue(node, info);
+					// Conditional properties (e.g. secondary/tertiary/quaternary lamp trackers, which only
+					// exist for devices with that many physical lamps) are dropped entirely when their field
+					// doesn't resolve, rather than being cached as N/A - see AggregatedGeneralProperty.
+					if (value == null) {
+						continue;
+					}
+					mappingValue.put(info.getName(), value);
 				}
 				nextDeviceCache.put(deviceId, mappingValue);
 			}
@@ -344,19 +355,25 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Extracts the value pointed to by the given property from a single device JSON node.
+	 * Extracts the value pointed to by the given property from a device JSON node.
+	 * <p>
+	 * When the field is missing/null/blank: {@link FieldProperty#isConditional() conditional} properties
+	 * resolve to {@code null} (signaling the caller to omit the property entirely, since it only applies
+	 * to some devices/hardware configurations), while regular properties fall back to
+	 * {@link Constant#NOT_AVAILABLE}.
 	 *
 	 * @param node the device JSON node
 	 * @param property the property whose {@code field} pointer is resolved
-	 * @return the trimmed text value, or {@link Constant#NOT_AVAILABLE} when missing, null or blank
+	 * @return the trimmed text value, {@code null} when missing and {@code conditional}, or
+	 * {@link Constant#NOT_AVAILABLE} when missing and not conditional
 	 */
-	private String extractValue(JsonNode node, AggregatedGeneralProperty property) {
+	private String extractValue(JsonNode node, FieldProperty property) {
 		JsonNode valueNode = node.at(property.getField());
-		if (valueNode.isMissingNode() || valueNode.isNull()) {
-			return Constant.NOT_AVAILABLE;
+		boolean isBlank = valueNode.isMissingNode() || valueNode.isNull() || StringUtils.isNullOrEmpty(valueNode.asText(), true);
+		if (isBlank) {
+			return property.isConditional() ? null : Constant.NOT_AVAILABLE;
 		}
-		String value = valueNode.asText();
-		return StringUtils.isNullOrEmpty(value, true) ? Constant.NOT_AVAILABLE : value;
+		return valueNode.asText();
 	}
 
 	/**
@@ -380,7 +397,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Builds an {@link AggregatedDevice} from cached monitoring data, setting basic identity fields
-	 * and the per-device monitoring properties map.
+	 * and the per-device monitoring properties map (see {@link AggregatedGeneralProperty}).
+	 * <p>
+	 * The raw GVE {@code DeviceType} value (the same one exposed as the flat {@code Type} property) is
+	 * also set on the dedicated {@link AggregatedDevice#setCategory(String)} field.
 	 *
 	 * @param deviceId the device identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the device
@@ -390,6 +410,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		AggregatedDevice aggregatedDevice = new AggregatedDevice();
 		aggregatedDevice.setDeviceId(deviceId);
 		aggregatedDevice.setDeviceName(cachedData.get(AggregatedGeneralProperty.DEVICE_NAME.getName()));
+		aggregatedDevice.setCategory(cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName()));
 		String connection = cachedData.get(AggregatedGeneralProperty.CONNECTION.getName());
 		aggregatedDevice.setDeviceOnline(Constant.ONLINE.equalsIgnoreCase(connection));
 
@@ -399,18 +420,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			switch (info) {
 				case DEVICE_ID:
 				case DEVICE_NAME:
-				case CONNECTION:
 					continue;
 				case POWER_STATUS:
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(info.getName(), isOn ? 1 : 0), isOn ? "1" : "0" );
 					break;
 				default:
-					String groupName = info.getGroup();
-					String key = StringUtils.isNullOrEmpty(groupName, true)
-							? info.getName()
-							: String.format(Constant.PROPERTY_FORMAT, groupName, info.getName());
-					stats.put(key, cachedData.getOrDefault(info.getName(), Constant.NOT_AVAILABLE));
+					putGroupedProperty(stats, cachedData, info);
 					break;
 			}
 		}
@@ -418,5 +434,24 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Puts the cached value for the given property into the stats map, prefixing the key with the
+	 * property's group (if any) using {@link Constant#PROPERTY_FORMAT}.
+	 *
+	 * @param stats the destination monitoring properties map
+	 * @param cachedData the cached property name/value pairs for the device
+	 * @param property the property to resolve and place into {@code stats}
+	 */
+	private void putGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property) {
+		if (property.isConditional() && !cachedData.containsKey(property.getName())) {
+			return;
+		}
+		String groupName = property.getGroup();
+		String key = StringUtils.isNullOrEmpty(groupName, true)
+				? property.getName()
+				: String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+		stats.put(key, cachedData.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
 	}
 }

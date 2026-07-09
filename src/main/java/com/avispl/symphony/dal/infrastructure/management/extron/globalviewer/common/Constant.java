@@ -28,7 +28,9 @@ public final class Constant {
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
+	public static final String LIVE_STATUS_GROUP = "LiveStatus";
 
+	//	Response payload keys
 	public static final String DEVICES = "Devices";
 
 	//	Warning messages
