@@ -94,16 +94,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedMonitoringDevice = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * Cached GVE Room data, keyed by {@link RoomProperty#ID}. Exposed as adapter/aggregator-level
-	 * statistics (see {@link #getMultipleStatistics()}), one dynamic {@code GVERoom_<ID>#} group per
-	 * cached room - this is NOT a per-device property.
+	 * Cached GVE Room data, keyed by {@link RoomProperty#ID}.
 	 */
 	private final Map<String, Map<String, String>> cachedRooms = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * Cached GVE Location data, keyed by {@link LocationProperty#ID}. Exposed as adapter/aggregator-level
-	 * statistics (see {@link #getMultipleStatistics()}), one dynamic {@code GVELocation_<ID>#} group per
-	 * cached location - this is NOT a per-device property.
+	 * Cached GVE Location data, keyed by {@link LocationProperty#ID}.
 	 */
 	private final Map<String, Map<String, String>> cachedLocations = Collections.synchronizedMap(new HashMap<>());
 
@@ -340,12 +336,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates aggregated device list by making a GET request to retrieve information.
-	 * All of the "Aggregated Device > General" and "Aggregated Device > Live Status" properties
-	 * (see {@link AggregatedGeneralProperty}) are sourced from this single list call - the {@code LiveStatus}
-	 * sub-object has been confirmed to be identical between this endpoint and the per-device
-	 * {@code /devices/{deviceId}} endpoint, so no separate per-device fetch is needed for this data.
-	 * Any error during the process is logged.
+	 * Populates {@link #cachedMonitoringDevice} by making a GET request to {@link Constant#DEVICES_ENDPOINT}.
 	 */
 	private void populateListDevice() {
 		try {
@@ -361,9 +352,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates the GVE Room cache ({@link #cachedRooms}) by making a GET request to {@code /rooms}.
-	 * Exposed as adapter-level statistics in {@link #getMultipleStatistics()}. Any error during the
-	 * process is logged.
+	 * Populates {@link #cachedRooms} by making a GET request to {@link Constant#ROOMS_ENDPOINT}.
 	 */
 	private void populateRoomList() {
 		try {
@@ -379,9 +368,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates the GVE Location cache ({@link #cachedLocations}) by making a GET request to
-	 * {@code /locations}. Exposed as adapter-level statistics in {@link #getMultipleStatistics()}. Any
-	 * error during the process is logged.
+	 * Populates {@link #cachedLocations} by making a GET request to {@link Constant#LOCATIONS_ENDPOINT}.
 	 */
 	private void populateLocationList() {
 		try {
@@ -397,11 +384,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Fetches a list of entities (devices, rooms, or locations) from the given endpoint, extracting each
-	 * entity's properties via {@code properties}' {@link FieldProperty} pointers, keyed by
-	 * {@code idProperty}'s resolved value. Shared by {@link #populateListDevice()},
-	 * {@link #populateRoomList()} and {@link #populateLocationList()}, whose list responses all follow the
-	 * same {@code { "<WrapperKey>": [...], "ResponseStatus": {} } } shape.
+	 * Fetches a list of entities from the given endpoint, extracting each entity's properties keyed by
+	 * {@code idProperty}'s resolved value.
 	 *
 	 * @param endpoint the endpoint to GET
 	 * @param wrapperKey the JSON key wrapping the array of entities (e.g. {@link Constant#DEVICES})
@@ -488,14 +472,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Builds an {@link AggregatedDevice} from cached monitoring data, setting basic identity fields
-	 * and the per-device monitoring properties map (see {@link AggregatedGeneralProperty}).
-	 * <p>
-	 * The raw GVE {@code DeviceType} value (the same one exposed as the flat {@code Type} property) is
-	 * also set on the dedicated {@link AggregatedDevice#setCategory(String)} field.
-	 * <p>
-	 * Room and Location data (see {@link RoomProperty}/{@link LocationProperty}) are NOT part of this -
-	 * they're exposed as adapter/aggregator-level statistics instead, see {@link #getMultipleStatistics()}.
+	 * Builds an {@link AggregatedDevice} from cached monitoring data.
 	 *
 	 * @param deviceId the device identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the device
@@ -532,14 +509,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Puts every cached entity's (room, location, etc.) properties into {@code stats} as its own dynamic
-	 * group, keyed by the entity's own ID (the {@code idProperty} value used to key {@code cachedEntities}
-	 * doubles as the group suffix - see {@link Constant#INDEXED_GROUP_FORMAT}), e.g.
-	 * {@code GVERoom_101#Name}, {@code GVERoom_101#Category}, {@code GVERoom_102#Name}, ...
-	 * <p>
-	 * Used to expose {@link #cachedRooms}/{@link #cachedLocations} as adapter/aggregator-level statistics
-	 * in {@link #getMultipleStatistics()} - unlike {@link #putGroupedProperty(Map, Map, FieldProperty)},
-	 * which places a single instance's properties into a per-device properties map.
+	 * Puts every cached entity's properties into {@code stats}, each as its own group keyed by the
+	 * entity's own ID.
 	 *
 	 * @param stats the destination adapter statistics map
 	 * @param cachedEntities cached entities keyed by their own ID, each holding its property name/value pairs
@@ -557,14 +528,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Puts the cached value for the given property into the stats map, prefixing the key with a per-instance
-	 * dynamic group built from the property's base group and {@code instanceId} (see
-	 * {@link Constant#INDEXED_GROUP_FORMAT}), e.g. {@code GVERoom_101#Name}.
+	 * Puts the cached value for the given property into the stats map, grouped under the property's
+	 * group combined with {@code instanceId} (e.g. {@code GVERoom_101#Name}).
 	 *
 	 * @param stats the destination adapter statistics map
-	 * @param cachedData the cached property name/value pairs for the single entity instance
+	 * @param cachedData the cached property name/value pairs for the entity instance
 	 * @param property the property to resolve and place into {@code stats}
-	 * @param instanceId the entity instance's own ID, used to disambiguate its group from other instances
+	 * @param instanceId the entity instance's own ID
 	 */
 	private void putIndexedGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property, String instanceId) {
 		if (property.isConditional() && !cachedData.containsKey(property.getName())) {
