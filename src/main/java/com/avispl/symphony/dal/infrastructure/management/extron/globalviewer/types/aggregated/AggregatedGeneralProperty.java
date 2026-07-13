@@ -8,14 +8,21 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.FieldDefaults;
 
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.BaseProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.FieldProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 
 /**
- * Represents general properties of an aggregated device retrieved from the {@code /devices} endpoint.
+ * Represents the aggregated device properties documented under the "Aggregated Device > General" and
+ * "Aggregated Device > Live Status" sections of the GVE Adapter Property Reference. All of these are
+ * sourced from a single {@code /devices} list call - the {@code LiveStatus} sub-object (and its lamp/
+ * filter counters) has been confirmed to be identical between the {@code /devices} list response and
+ * the {@code /devices/{deviceId}} per-device response, so no separate per-device fetch is needed for
+ * this data.
  * <p>
- * Each constant maps a monitored property {@code name} to its location in the device JSON via a
- * Jackson {@code field} pointer (so both top-level and nested {@code LiveStatus} fields are supported),
- * with an optional {@code group} prefix.
+ * Each constant maps a monitored property {@code name} (matching the reference doc's display name,
+ * including unit suffixes like {@code (h)}/{@code (W)}/{@code ($)}) to its location in the device JSON
+ * via a Jackson {@code field} pointer, with an optional {@code group} prefix ({@code LiveStatus} for
+ * everything under the {@code Live Status} section, empty/flat for {@code General}).
  * </p>
  *
  * @author Harry / Symphony Dev Team
@@ -24,28 +31,47 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Getter
 @AllArgsConstructor
-public enum AggregatedGeneralProperty implements BaseProperty {
-	DEVICE_ID("DeviceId", "/DeviceId", ""),
-	DEVICE_NAME("DeviceName", "/DeviceName", ""),
-	DEVICE_TYPE("Type", "/DeviceType", ""),
-	ROOM_ID("RoomID", "/RoomId", ""),
-	CONTROLLER_ID("ControllerID", "/ControllerId", ""),
-	CONTROLLER_COMMAND_GUID("ControllerCommandGUID", "/ControllerCommandGuid", ""),
-	CONTROLLER_PORT_NUMBER("ControllerPortNumber", "/ControllerPortNumber", ""),
-	CONTROLLER_PORT_TYPE("ControllerPortType", "/ControllerPortType", ""),
-	HOST("Host", "/Host", ""),
-	STATUS("Status", "/Status", ""),
-	LAMP_COST("LampCost($)", "/LampCost", ""),
-	POWER_ON_POWER_CONSUMPTION("PowerOnPowerConsumption(W)", "/PowerOnPowerConsumption", ""),
-	POWER_OFF_POWER_CONSUMPTION("PowerOffPowerConsumption(W)", "/PowerOffPowerConsumption", ""),
-	CONNECTION("Connection", "/LiveStatus/Connection", ""),
-	POWER_STATUS("PowerStatus", "/LiveStatus/DeviceStatus", ""),
+public enum AggregatedGeneralProperty implements FieldProperty {
+	// General
+	DEVICE_ID("DeviceId", "/DeviceId", "", false),
+	DEVICE_NAME("DeviceName", "/DeviceName", "", false),
+	DEVICE_TYPE("Type", "/DeviceType", "", false),
+	ROOM_ID("RoomID", "/RoomId", "", false),
+	CONTROLLER_ID("ControllerID", "/ControllerId", "", false),
+	CONTROLLER_COMMAND_GUID("ControllerCommandGUID", "/ControllerCommandGuid", "", false),
+	CONTROLLER_PORT_NUMBER("ControllerPortNumber", "/ControllerPortNumber", "", false),
+	CONTROLLER_PORT_TYPE("ControllerPortType", "/ControllerPortType", "", false),
+	HOST("Host", "/Host", "", false),
+	STATUS("Status", "/Status", "", false),
+	LAMP_COST("LampCost($)", "/LampCost", "", false),
+	POWER_ON_POWER_CONSUMPTION("PowerOnPowerConsumption(W)", "/PowerOnPowerConsumption", "", false),
+	POWER_OFF_POWER_CONSUMPTION("PowerOffPowerConsumption(W)", "/PowerOffPowerConsumption", "", false),
+	POWER_STATUS("PowerStatus", "/LiveStatus/DeviceStatus", "", false),
+
+	// Live Status - confirmed present (even if defaulted to 0) regardless of lamp count
+	CONNECTION("Connection", "/LiveStatus/Connection", Constant.LIVE_STATUS_GROUP, false),
+	LAMP_HOURS("LampHours(h)", "/LiveStatus/LampHours", Constant.LIVE_STATUS_GROUP, false),
+	MAX_LAMP_HOURS("MaxLampHours(h)", "/LiveStatus/MaxLampHours", Constant.LIVE_STATUS_GROUP, false),
+	OPERATION_HOURS("OperationHours(h)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
+	FILTER_HOURS("FilterHours(h)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
+	MAX_FILTER_HOURS("MaxFilterHours(h)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
+
+	// Live Status - only present on devices with that many lamps; conditional (omitted, not N/A, when absent)
+	LAMP_HOURS_2("LampHours2(h)", "/LiveStatus/LampHours2", Constant.LIVE_STATUS_GROUP, true),
+	LAMP_HOURS_3("LampHours3(h)", "/LiveStatus/LampHours3", Constant.LIVE_STATUS_GROUP, true),
+	LAMP_HOURS_4("LampHours4(h)", "/LiveStatus/LampHours4", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS("AverageLampHours(h)", "/LiveStatus/AverageLampHours", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_2("AverageLampHours2(h)", "/LiveStatus/AverageLampHours2", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_3("AverageLampHours3(h)", "/LiveStatus/AverageLampHours3", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_4("AverageLampHours4(h)", "/LiveStatus/AverageLampHours4", Constant.LIVE_STATUS_GROUP, true),
 	;
 
-	/** Monitored property name exposed to Symphony. */
+	/** Monitored property name exposed to Symphony (matches the reference doc's display name). */
 	String name;
 	/** Jackson pointer to the value within a single device JSON node. */
 	String field;
 	/** Optional group prefix; empty means the property is flat (no {@code group#} prefix). */
 	String group;
+	/** When {@code true}, this property is omitted entirely (rather than shown as {@code N/A}) when {@link #field} doesn't resolve. */
+	boolean conditional;
 }
