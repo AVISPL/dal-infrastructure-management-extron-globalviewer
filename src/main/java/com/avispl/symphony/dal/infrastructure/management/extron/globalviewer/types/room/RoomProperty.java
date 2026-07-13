@@ -12,7 +12,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 /**
  * The "Aggregator &gt; GVE Room" adapter-level statistics, sourced from {@code /rooms}.
  *
- * @author Kevin / Symphony Dev Team
+ * @author Ritik Madaan / Symphony Dev Team
  * @since 1.0.0
  */
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
