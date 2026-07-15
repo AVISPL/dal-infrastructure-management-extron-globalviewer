@@ -28,6 +28,8 @@ public final class Constant {
 	public static final String DEVICES_ENDPOINT = "/devices";
 	public static final String ROOMS_ENDPOINT = "/rooms";
 	public static final String LOCATIONS_ENDPOINT = "/locations";
+	public static final String MODEL_ENDPOINT = "/devices/model/%s";
+	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -39,6 +41,8 @@ public final class Constant {
 	public static final String DEVICES = "Devices";
 	public static final String ROOMS = "Rooms";
 	public static final String LOCATIONS = "Locations";
+	public static final String MODEL = "Model";
+	public static final String MANUFACTURER = "Manufacturer";
 
 	//	Warning messages
 	public static final String INVALID_VALUE_WARNING = "The value is invalid(%s), returning null.";

@@ -17,6 +17,8 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.location.LocationProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.manufacturer.ManufacturerProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.model.ModelProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
@@ -33,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -102,6 +105,49 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * Cached GVE Location data, keyed by {@link LocationProperty#ID}.
 	 */
 	private final Map<String, Map<String, String>> cachedLocations = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached GVE Model data, keyed by {@link ModelProperty#ID}.
+	 */
+	private final Map<String, Map<String, String>> cachedModels = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached GVE Manufacturer data, keyed by {@link ManufacturerProperty#ID}.
+	 */
+	private final Map<String, Map<String, String>> cachedManufacturers = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Timestamp of the last full {@link #cachedModels}/{@link #cachedManufacturers} refresh.
+	 */
+	private volatile long lastModelCacheRefreshTimestamp;
+
+	/**
+	 * Hours between full refreshes of {@link #cachedModels}/{@link #cachedManufacturers}.
+	 */
+	private volatile long modelCacheRefreshIntervalHours = 24;
+
+	/**
+	 * Retrieves {@link #modelCacheRefreshIntervalHours}.
+	 *
+	 * @return value of {@link #modelCacheRefreshIntervalHours}
+	 */
+	public String getModelCacheRefreshInterval() {
+		return String.valueOf(modelCacheRefreshIntervalHours);
+	}
+
+	/**
+	 * Sets {@link #modelCacheRefreshIntervalHours}.
+	 *
+	 * @param modelCacheRefreshInterval new value, in hours; falls back to 24 when invalid or non-positive
+	 */
+	public void setModelCacheRefreshInterval(String modelCacheRefreshInterval) {
+		try {
+			long parsed = Long.parseLong(modelCacheRefreshInterval.trim());
+			this.modelCacheRefreshIntervalHours = parsed > 0 ? parsed : 24;
+		} catch (Exception e) {
+			this.modelCacheRefreshIntervalHours = 24;
+		}
+	}
 
 	/**
 	 * List of aggregated devices populated from {@link #cachedMonitoringDevice}.
@@ -194,6 +240,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					} catch (Exception e) {
 						logger.error("Error occurred during device list retrieval: " + e.getMessage(), e);
 					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching model and manufacturer data");
+						}
+						populateModelAndManufacturerData();
+					} catch (Exception e) {
+						logger.error("Error occurred during model/manufacturer retrieval: " + e.getMessage(), e);
+					}
 					nextDevicesCollectionIterationTimestamp = System.currentTimeMillis() + (getMonitoringRate() * 60000L);
 					lastMonitoringCycleDuration = Math.max((System.currentTimeMillis() - startCycle) / 1000, 1L);
 					logger.debug("Finished collecting devices statistics cycle at " + new Date() + ", total duration: " + lastMonitoringCycleDuration);
@@ -251,6 +305,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
+		cachedModels.clear();
+		cachedManufacturers.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -384,6 +440,89 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
+	 * Resolves {@link #cachedModels}/{@link #cachedManufacturers} for every distinct model/manufacturer ID
+	 * referenced by {@link #cachedMonitoringDevice}, fetching only IDs not already cached. Once every
+	 * {@link #modelCacheRefreshIntervalHours}, both caches are cleared first so renamed/removed entries are
+	 * picked up again.
+	 */
+	private void populateModelAndManufacturerData() {
+		long refreshIntervalMillis = modelCacheRefreshIntervalHours * 3600_000L;
+		if (System.currentTimeMillis() - lastModelCacheRefreshTimestamp >= refreshIntervalMillis) {
+			cachedModels.clear();
+			cachedManufacturers.clear();
+			lastModelCacheRefreshTimestamp = System.currentTimeMillis();
+		}
+
+		Set<String> modelIds;
+		synchronized (cachedMonitoringDevice) {
+			modelIds = cachedMonitoringDevice.values().stream()
+					.map(device -> device.get(AggregatedGeneralProperty.MODEL_ID.getName()))
+					.filter(StringUtils::isNotNullOrEmpty)
+					.collect(Collectors.toSet());
+		}
+		for (String modelId : modelIds) {
+			if (cachedModels.containsKey(modelId)) {
+				continue;
+			}
+			try {
+				Map<String, String> model = fetchSingleEntity(String.format(Constant.MODEL_ENDPOINT, modelId), Constant.MODEL, ModelProperty.values());
+				if (model != null) {
+					cachedModels.put(modelId, model);
+				}
+			} catch (Exception e) {
+				logger.error("Unable to retrieve model " + modelId, e);
+			}
+		}
+
+		Set<String> manufacturerIds = cachedModels.values().stream()
+				.map(model -> model.get(ModelProperty.MANUFACTURER_ID.getName()))
+				.filter(StringUtils::isNotNullOrEmpty)
+				.collect(Collectors.toSet());
+		for (String manufacturerId : manufacturerIds) {
+			if (cachedManufacturers.containsKey(manufacturerId)) {
+				continue;
+			}
+			try {
+				Map<String, String> manufacturer = fetchSingleEntity(String.format(Constant.MANUFACTURER_ENDPOINT, manufacturerId), Constant.MANUFACTURER, ManufacturerProperty.values());
+				if (manufacturer != null) {
+					cachedManufacturers.put(manufacturerId, manufacturer);
+				}
+			} catch (Exception e) {
+				logger.error("Unable to retrieve manufacturer " + manufacturerId, e);
+			}
+		}
+	}
+
+	/**
+	 * Fetches a single entity from the given endpoint, extracting its properties from the object at
+	 * {@code wrapperKey}.
+	 *
+	 * @param endpoint the endpoint to GET
+	 * @param wrapperKey the JSON key wrapping the entity object (e.g. {@link Constant#MODEL})
+	 * @param properties all properties to extract from the entity
+	 * @param <T> the enum type implementing {@link FieldProperty}
+	 * @return the extracted property name/value pairs, or {@code null} if the response is empty/malformed
+	 * @throws Exception if the request itself fails
+	 */
+	private <T extends Enum<T> & FieldProperty> Map<String, String> fetchSingleEntity(String endpoint, String wrapperKey, T[] properties) throws Exception {
+		String jsonResult = this.doGet(endpoint);
+		JsonNode response = objectMapper.readTree(jsonResult);
+		if (response == null || !response.has(wrapperKey) || response.get(wrapperKey).isNull() || response.get(wrapperKey).isMissingNode()) {
+			return null;
+		}
+		JsonNode node = response.path(wrapperKey);
+		Map<String, String> result = new HashMap<>();
+		for (T info : properties) {
+			String value = extractValue(node, info);
+			if (value == null) {
+				continue;
+			}
+			result.put(info.getName(), value);
+		}
+		return result;
+	}
+
+	/**
 	 * Fetches a list of entities from the given endpoint, extracting each entity's properties keyed by
 	 * {@code idProperty}'s resolved value.
 	 *
@@ -492,6 +631,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			switch (info) {
 				case DEVICE_ID:
 				case DEVICE_NAME:
+				case MODEL_ID:
 					continue;
 				case POWER_STATUS:
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
@@ -502,10 +642,28 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					break;
 			}
 		}
+		putModelAndManufacturerProperties(stats, cachedData);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Resolves and puts the device's {@code Model}/{@code Manufacturer} names into {@code stats}, chaining
+	 * the device's model ID through {@link #cachedModels} and then {@link #cachedManufacturers}.
+	 *
+	 * @param stats the destination device statistics map
+	 * @param cachedData the cached property name/value pairs for the device
+	 */
+	private void putModelAndManufacturerProperties(Map<String, String> stats, Map<String, String> cachedData) {
+		String modelId = cachedData.get(AggregatedGeneralProperty.MODEL_ID.getName());
+		Map<String, String> model = modelId == null ? null : cachedModels.get(modelId);
+		stats.put(Constant.MODEL, model == null ? Constant.NOT_AVAILABLE : model.getOrDefault(ModelProperty.NAME.getName(), Constant.NOT_AVAILABLE));
+
+		String manufacturerId = model == null ? null : model.get(ModelProperty.MANUFACTURER_ID.getName());
+		Map<String, String> manufacturer = manufacturerId == null ? null : cachedManufacturers.get(manufacturerId);
+		stats.put(Constant.MANUFACTURER, manufacturer == null ? Constant.NOT_AVAILABLE : manufacturer.getOrDefault(ManufacturerProperty.NAME.getName(), Constant.NOT_AVAILABLE));
 	}
 
 	/**
