@@ -642,28 +642,29 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					break;
 			}
 		}
-		putModelAndManufacturerProperties(stats, cachedData);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
+		resolveModelAndManufacturer(aggregatedDevice, cachedData);
 		return aggregatedDevice;
 	}
 
 	/**
-	 * Resolves and puts the device's {@code Model}/{@code Manufacturer} names into {@code stats}, chaining
-	 * the device's model ID through {@link #cachedModels} and then {@link #cachedManufacturers}.
+	 * Resolves the device's model/manufacturer names, chaining the device's model ID through
+	 * {@link #cachedModels} and then {@link #cachedManufacturers}, and sets them on
+	 * {@link AggregatedDevice#setDeviceModel(String)}/{@link AggregatedDevice#setDeviceMake(String)}.
 	 *
-	 * @param stats the destination device statistics map
+	 * @param aggregatedDevice the device to set the resolved model/make on
 	 * @param cachedData the cached property name/value pairs for the device
 	 */
-	private void putModelAndManufacturerProperties(Map<String, String> stats, Map<String, String> cachedData) {
+	private void resolveModelAndManufacturer(AggregatedDevice aggregatedDevice, Map<String, String> cachedData) {
 		String modelId = cachedData.get(AggregatedGeneralProperty.MODEL_ID.getName());
 		Map<String, String> model = modelId == null ? null : cachedModels.get(modelId);
-		stats.put(Constant.MODEL, model == null ? Constant.NOT_AVAILABLE : model.getOrDefault(ModelProperty.NAME.getName(), Constant.NOT_AVAILABLE));
+		aggregatedDevice.setDeviceModel(model == null ? Constant.NOT_AVAILABLE : model.getOrDefault(ModelProperty.NAME.getName(), Constant.NOT_AVAILABLE));
 
 		String manufacturerId = model == null ? null : model.get(ModelProperty.MANUFACTURER_ID.getName());
 		Map<String, String> manufacturer = manufacturerId == null ? null : cachedManufacturers.get(manufacturerId);
-		stats.put(Constant.MANUFACTURER, manufacturer == null ? Constant.NOT_AVAILABLE : manufacturer.getOrDefault(ManufacturerProperty.NAME.getName(), Constant.NOT_AVAILABLE));
+		aggregatedDevice.setDeviceMake(manufacturer == null ? Constant.NOT_AVAILABLE : manufacturer.getOrDefault(ManufacturerProperty.NAME.getName(), Constant.NOT_AVAILABLE));
 	}
 
 	/**
