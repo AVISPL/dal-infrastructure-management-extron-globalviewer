@@ -40,6 +40,10 @@ public final class Constant {
 	public static final String ROOMS = "Rooms";
 	public static final String LOCATIONS = "Locations";
 
+	//	Dynamic statistics
+	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
+	public static final String LAST_MONITORING_CYCLE_DURATION = "LastMonitoringCycleDuration(sec)";
+
 	//	Warning messages
 	public static final String INVALID_VALUE_WARNING = "The value is invalid(%s), returning null.";
 	public static final String FETCHED_DATA_NULL_WARNING = "Fetched data is null. Endpoint: %s, ResponseClass: %s";
