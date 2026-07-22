@@ -29,7 +29,6 @@ public final class Constant {
 	public static final String ROOMS_ENDPOINT = "/rooms";
 	public static final String LOCATIONS_ENDPOINT = "/locations";
 	public static final String ALERTS_ENDPOINT = "/alerts";
-	public static final String DELETE_DEVICE_ALERTS_ENDPOINT = "/alerts/delete/devices";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";

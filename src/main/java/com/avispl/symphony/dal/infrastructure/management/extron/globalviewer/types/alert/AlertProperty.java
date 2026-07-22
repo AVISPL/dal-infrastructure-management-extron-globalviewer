@@ -18,7 +18,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
 @Getter
 @AllArgsConstructor
 public enum AlertProperty implements FieldProperty {
-	DEVICE_ID("DeviceId", "/DeviceId", "", false),
+	DEVICE_ID("DeviceID", "/DeviceId", "", false),
 	HISTORY_LOG_ID("MonitorHistoryLogID", "/MonitorHistoryLogId", "", false),
 	MONITOR_NAME("MonitorName", "/MonitorName", "", false),
 	IP_ADDRESS("IPAddress", "/IPAddress", "", false),

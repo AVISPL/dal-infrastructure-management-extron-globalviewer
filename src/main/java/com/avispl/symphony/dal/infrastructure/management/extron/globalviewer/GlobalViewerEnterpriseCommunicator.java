@@ -335,15 +335,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
 			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
 
-			List<AdvancedControllableProperty> controls = new ArrayList<>();
-			if (!cachedAlertsByDevice.isEmpty()) {
-				Util.addAdvancedControlProperties(controls, statistics,
-						ControllablePropertyFactory.createButton(String.format(Constant.PROPERTY_FORMAT, Constant.ALERTS, Constant.DEVICES), "Delete", "Deleting...", 0L),
-						Constant.EMPTY);
-			}
-
 			this.localExtendedStatistics.setStatistics(statistics);
-			this.localExtendedStatistics.setControllableProperties(controls);
+			this.localExtendedStatistics.setControllableProperties(new ArrayList<>());
 		} finally {
 			this.reentrantLock.unlock();
 		}
@@ -377,10 +370,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-		String property = controllableProperty.getProperty();
-		if (String.format(Constant.PROPERTY_FORMAT, Constant.ALERTS, Constant.DEVICES).equals(property)) {
-			this.doPut(Constant.DELETE_DEVICE_ALERTS_ENDPOINT, Constant.EMPTY);
-		}
+		// Alert deletion is a separate story, to be implemented later.
 	}
 
 	@Override
