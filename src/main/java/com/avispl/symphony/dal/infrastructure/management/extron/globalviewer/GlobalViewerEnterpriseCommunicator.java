@@ -326,17 +326,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		this.reentrantLock.lock();
 		try {
 			this.authenticate();
-			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), String.valueOf(cachedMonitoringDevice.size()));
-			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), String.valueOf(lastMonitoringCycleDuration));
-
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
 			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
 			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
 
+			Map<String, String> dynamicStatistics = new HashMap<>();
+			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
+			dynamicStatistics.put(Constant.LAST_MONITORING_CYCLE_DURATION, String.valueOf(lastMonitoringCycleDuration));
+
 			this.localExtendedStatistics.setStatistics(statistics);
-			this.localExtendedStatistics.setControllableProperties(new ArrayList<>());
+			this.localExtendedStatistics.setDynamicStatistics(dynamicStatistics);
 		} finally {
 			this.reentrantLock.unlock();
 		}
@@ -393,8 +394,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			versionProperties.load(this.getClass().getResourceAsStream("/version.properties"));
 			versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(), Constant.NOT_AVAILABLE);
 			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
-			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), Constant.NOT_AVAILABLE);
-			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), String.valueOf(lastMonitoringCycleDuration));
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);

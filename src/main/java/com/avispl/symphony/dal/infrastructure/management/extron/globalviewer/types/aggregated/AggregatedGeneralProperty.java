@@ -20,7 +20,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
  * this data.
  * <p>
  * Each constant maps a monitored property {@code name} (matching the reference doc's display name,
- * including unit suffixes like {@code (h)}/{@code (W)}/{@code ($)}) to its location in the device JSON
+ * including unit suffixes like {@code (hr)}/{@code (W)}/{@code ($)}) to its location in the device JSON
  * via a Jackson {@code field} pointer, with an optional {@code group} prefix ({@code LiveStatus} for
  * everything under the {@code Live Status} section, empty/flat for {@code General}).
  * </p>
@@ -33,7 +33,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 @AllArgsConstructor
 public enum AggregatedGeneralProperty implements FieldProperty {
 	// General
-	DEVICE_ID("DeviceId", "/DeviceId", "", false),
+	DEVICE_ID("DeviceID", "/DeviceId", "", false),
 	DEVICE_NAME("DeviceName", "/DeviceName", "", false),
 	DEVICE_TYPE("Type", "/DeviceType", "", false),
 	ROOM_ID("RoomID", "/RoomId", "", false),
@@ -50,20 +50,20 @@ public enum AggregatedGeneralProperty implements FieldProperty {
 
 	// Live Status - confirmed present (even if defaulted to 0) regardless of lamp count
 	CONNECTION("Connection", "/LiveStatus/Connection", Constant.LIVE_STATUS_GROUP, false),
-	LAMP_HOURS("LampHours(h)", "/LiveStatus/LampHours", Constant.LIVE_STATUS_GROUP, false),
-	MAX_LAMP_HOURS("MaxLampHours(h)", "/LiveStatus/MaxLampHours", Constant.LIVE_STATUS_GROUP, false),
-	OPERATION_HOURS("OperationHours(h)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
-	FILTER_HOURS("FilterHours(h)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
-	MAX_FILTER_HOURS("MaxFilterHours(h)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
+	LAMP_HOURS("LampHours(hr)", "/LiveStatus/LampHours", Constant.LIVE_STATUS_GROUP, false),
+	MAX_LAMP_HOURS("MaximumLampHours(hr)", "/LiveStatus/MaxLampHours", Constant.LIVE_STATUS_GROUP, false),
+	OPERATION_HOURS("OperationHours(hr)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
+	FILTER_HOURS("FilterHours(hr)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
+	MAX_FILTER_HOURS("MaximumFilterHours(hr)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
 
 	// Live Status - only present on devices with that many lamps; conditional (omitted, not N/A, when absent)
-	LAMP_HOURS_2("LampHours2(h)", "/LiveStatus/LampHours2", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_3("LampHours3(h)", "/LiveStatus/LampHours3", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_4("LampHours4(h)", "/LiveStatus/LampHours4", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS("AverageLampHours(h)", "/LiveStatus/AverageLampHours", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_2("AverageLampHours2(h)", "/LiveStatus/AverageLampHours2", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_3("AverageLampHours3(h)", "/LiveStatus/AverageLampHours3", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_4("AverageLampHours4(h)", "/LiveStatus/AverageLampHours4", Constant.LIVE_STATUS_GROUP, true),
+	LAMP_HOURS_2("LampHours2(hr)", "/LiveStatus/LampHours2", Constant.LIVE_STATUS_GROUP, true),
+	LAMP_HOURS_3("LampHours3(hr)", "/LiveStatus/LampHours3", Constant.LIVE_STATUS_GROUP, true),
+	LAMP_HOURS_4("LampHours4(hr)", "/LiveStatus/LampHours4", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS("AverageLampHours(hr)", "/LiveStatus/AverageLampHours", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_2("AverageLampHours2(hr)", "/LiveStatus/AverageLampHours2", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_3("AverageLampHours3(hr)", "/LiveStatus/AverageLampHours3", Constant.LIVE_STATUS_GROUP, true),
+	AVERAGE_LAMP_HOURS_4("AverageLampHours4(hr)", "/LiveStatus/AverageLampHours4", Constant.LIVE_STATUS_GROUP, true),
 	;
 
 	/** Monitored property name exposed to Symphony (matches the reference doc's display name). */
