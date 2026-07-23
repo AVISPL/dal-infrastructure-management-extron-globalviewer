@@ -564,6 +564,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			switch (info) {
 				case DEVICE_ID:
 				case DEVICE_NAME:
+				case LAMP_HOURS:
+				case AVERAGE_LAMP_HOURS:
 					continue;
 				case POWER_STATUS:
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
@@ -574,10 +576,45 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					break;
 			}
 		}
+		putLampUtilization(stats, cachedData);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Puts the first lamp's utilization readings into {@code stats}, named {@code LampUtilization(hr)}/
+	 * {@code AverageLampUtilization(hr)} for a single-lamp device, or {@code Lamp1Utilization(hr)}/
+	 * {@code AverageLamp1Utilization(hr)} when more lamps are present.
+	 *
+	 * @param stats the destination device statistics map
+	 * @param cachedData the cached property name/value pairs for the device
+	 */
+	private void putLampUtilization(Map<String, String> stats, Map<String, String> cachedData) {
+		boolean isMultiLamp = cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_2.getName())
+				|| cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_3.getName())
+				|| cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_4.getName());
+
+		putLampUtilizationEntry(stats, cachedData, AggregatedGeneralProperty.LAMP_HOURS, isMultiLamp ? "Lamp1Utilization(hr)" : "LampUtilization(hr)");
+		putLampUtilizationEntry(stats, cachedData, AggregatedGeneralProperty.AVERAGE_LAMP_HOURS, isMultiLamp ? "AverageLamp1Utilization(hr)" : "AverageLampUtilization(hr)");
+	}
+
+	/**
+	 * Puts {@code property}'s cached value into {@code stats} under {@code propertyName}, grouped under
+	 * {@link Constant#LIVE_STATUS_GROUP}; no-op if not present in {@code cachedData}.
+	 *
+	 * @param stats the destination device statistics map
+	 * @param cachedData the cached property name/value pairs for the device
+	 * @param property the property whose cached value is resolved
+	 * @param propertyName the Symphony-facing property name to expose it under
+	 */
+	private void putLampUtilizationEntry(Map<String, String> stats, Map<String, String> cachedData, AggregatedGeneralProperty property, String propertyName) {
+		if (!cachedData.containsKey(property.getName())) {
+			return;
+		}
+		String key = String.format(Constant.PROPERTY_FORMAT, Constant.LIVE_STATUS_GROUP, propertyName);
+		stats.put(key, cachedData.get(property.getName()));
 	}
 
 	/**
