@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -39,6 +40,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -497,9 +500,83 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 				mappingValue.put(info.getName(), value);
 			}
+			if (Constant.DEVICES.equals(wrapperKey)) {
+				putDynamicLampUtilization(node, mappingValue);
+			}
 			result.put(id, mappingValue);
 		}
 		return result;
+	}
+
+	/** Matches lamp-hours field names (unsuffixed or numbered) under a device's LiveStatus node. */
+	private static final Pattern LAMP_HOURS_PATTERN = Pattern.compile("LampHours(\\d*)");
+	/** Matches average-lamp-hours field names (unsuffixed or numbered) under a device's LiveStatus node. */
+	private static final Pattern AVERAGE_LAMP_HOURS_PATTERN = Pattern.compile("AverageLampHours(\\d*)");
+
+	/**
+	 * Scans {@code node}'s {@code LiveStatus} fields for however many lamp/average-lamp readings are
+	 * present, and puts them into {@code mappingValue} under fully-qualified keys (e.g.
+	 * {@code LiveStatus#Lamp3Utilization(hr)}), named unindexed if there's only one lamp or indexed
+	 * ({@code Lamp1Utilization(hr)}, {@code Lamp2Utilization(hr)}, ...) otherwise.
+	 *
+	 * @param node the device JSON node
+	 * @param mappingValue the destination cached property map for this device
+	 */
+	private void putDynamicLampUtilization(JsonNode node, Map<String, String> mappingValue) {
+		JsonNode liveStatus = node.path("LiveStatus");
+		Map<Integer, String> lampValues = new HashMap<>();
+		Map<Integer, String> averageLampValues = new HashMap<>();
+
+		Iterator<String> fieldNames = liveStatus.fieldNames();
+		while (fieldNames.hasNext()) {
+			String fieldName = fieldNames.next();
+			putMatchedIndex(liveStatus, fieldName, LAMP_HOURS_PATTERN, lampValues);
+			putMatchedIndex(liveStatus, fieldName, AVERAGE_LAMP_HOURS_PATTERN, averageLampValues);
+		}
+
+		boolean isMultiLamp = lampValues.size() > 1;
+		putIndexedLampEntries(mappingValue, lampValues, isMultiLamp, "Lamp");
+		putIndexedLampEntries(mappingValue, averageLampValues, isMultiLamp, "AverageLamp");
+	}
+
+	/**
+	 * If {@code fieldName} matches {@code pattern}, puts its resolved value into {@code destination}
+	 * keyed by lamp index (unsuffixed = index {@code 1}, numbered = that number); no-op otherwise.
+	 *
+	 * @param parent the JSON node {@code fieldName} belongs to
+	 * @param fieldName the field name to test against {@code pattern}
+	 * @param pattern the field-name pattern to match
+	 * @param destination the map to add the resolved value to, keyed by lamp index
+	 */
+	private void putMatchedIndex(JsonNode parent, String fieldName, Pattern pattern, Map<Integer, String> destination) {
+		Matcher matcher = pattern.matcher(fieldName);
+		if (!matcher.matches()) {
+			return;
+		}
+		String indexGroup = matcher.group(1);
+		int index = StringUtils.isNullOrEmpty(indexGroup, true) ? 1 : Integer.parseInt(indexGroup);
+		String value = parent.path(fieldName).asText();
+		if (StringUtils.isNotNullOrEmpty(value)) {
+			destination.put(index, value);
+		}
+	}
+
+	/**
+	 * Puts each resolved lamp index's value into {@code mappingValue}, named {@code baseName + "Utilization(hr)"}
+	 * (unindexed) or {@code baseName + index + "Utilization(hr)"} depending on {@code isMultiLamp}.
+	 *
+	 * @param mappingValue the destination cached property map for this device
+	 * @param values resolved values keyed by lamp index
+	 * @param isMultiLamp whether the device has more than one lamp
+	 * @param baseName {@code "Lamp"} or {@code "AverageLamp"}
+	 */
+	private void putIndexedLampEntries(Map<String, String> mappingValue, Map<Integer, String> values, boolean isMultiLamp, String baseName) {
+		for (Map.Entry<Integer, String> entry : values.entrySet()) {
+			String indexPart = isMultiLamp ? String.valueOf(entry.getKey()) : Constant.EMPTY;
+			String propertyName = baseName + indexPart + "Utilization(hr)";
+			String key = String.format(Constant.PROPERTY_FORMAT, Constant.LIVE_STATUS_GROUP, propertyName);
+			mappingValue.put(key, entry.getValue());
+		}
 	}
 
 	/**
@@ -564,8 +641,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			switch (info) {
 				case DEVICE_ID:
 				case DEVICE_NAME:
-				case LAMP_HOURS:
-				case AVERAGE_LAMP_HOURS:
 					continue;
 				case POWER_STATUS:
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
@@ -576,45 +651,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					break;
 			}
 		}
-		putLampUtilization(stats, cachedData);
+		// Lamp/average-lamp utilization entries are already fully-qualified stats keys (see
+		// #putDynamicLampUtilization) - no other cached property name contains "#", so this picks up
+		// exactly those and nothing else.
+		for (Map.Entry<String, String> entry : cachedData.entrySet()) {
+			if (entry.getKey().contains("#")) {
+				stats.put(entry.getKey(), entry.getValue());
+			}
+		}
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
-	}
-
-	/**
-	 * Puts the first lamp's utilization readings into {@code stats}, named {@code LampUtilization(hr)}/
-	 * {@code AverageLampUtilization(hr)} for a single-lamp device, or {@code Lamp1Utilization(hr)}/
-	 * {@code AverageLamp1Utilization(hr)} when more lamps are present.
-	 *
-	 * @param stats the destination device statistics map
-	 * @param cachedData the cached property name/value pairs for the device
-	 */
-	private void putLampUtilization(Map<String, String> stats, Map<String, String> cachedData) {
-		boolean isMultiLamp = cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_2.getName())
-				|| cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_3.getName())
-				|| cachedData.containsKey(AggregatedGeneralProperty.LAMP_HOURS_4.getName());
-
-		putLampUtilizationEntry(stats, cachedData, AggregatedGeneralProperty.LAMP_HOURS, isMultiLamp ? "Lamp1Utilization(hr)" : "LampUtilization(hr)");
-		putLampUtilizationEntry(stats, cachedData, AggregatedGeneralProperty.AVERAGE_LAMP_HOURS, isMultiLamp ? "AverageLamp1Utilization(hr)" : "AverageLampUtilization(hr)");
-	}
-
-	/**
-	 * Puts {@code property}'s cached value into {@code stats} under {@code propertyName}, grouped under
-	 * {@link Constant#LIVE_STATUS_GROUP}; no-op if not present in {@code cachedData}.
-	 *
-	 * @param stats the destination device statistics map
-	 * @param cachedData the cached property name/value pairs for the device
-	 * @param property the property whose cached value is resolved
-	 * @param propertyName the Symphony-facing property name to expose it under
-	 */
-	private void putLampUtilizationEntry(Map<String, String> stats, Map<String, String> cachedData, AggregatedGeneralProperty property, String propertyName) {
-		if (!cachedData.containsKey(property.getName())) {
-			return;
-		}
-		String key = String.format(Constant.PROPERTY_FORMAT, Constant.LIVE_STATUS_GROUP, propertyName);
-		stats.put(key, cachedData.get(property.getName()));
 	}
 
 	/**

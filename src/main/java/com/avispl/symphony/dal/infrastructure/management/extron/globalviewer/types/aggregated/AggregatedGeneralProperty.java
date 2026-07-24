@@ -54,15 +54,6 @@ public enum AggregatedGeneralProperty implements FieldProperty {
 	OPERATION_HOURS("OperationTime(hr)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
 	FILTER_HOURS("FilterUtilization(hr)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
 	MAX_FILTER_HOURS("MaximumFilterUtilization(hr)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
-
-	LAMP_HOURS("LampUtilization(hr)", "/LiveStatus/LampHours", Constant.LIVE_STATUS_GROUP, false),
-	AVERAGE_LAMP_HOURS("AverageLampUtilization(hr)", "/LiveStatus/AverageLampHours", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_2("Lamp2Utilization(hr)", "/LiveStatus/LampHours2", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_3("Lamp3Utilization(hr)", "/LiveStatus/LampHours3", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_4("Lamp4Utilization(hr)", "/LiveStatus/LampHours4", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_2("AverageLamp2Utilization(hr)", "/LiveStatus/AverageLampHours2", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_3("AverageLamp3Utilization(hr)", "/LiveStatus/AverageLampHours3", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_4("AverageLamp4Utilization(hr)", "/LiveStatus/AverageLampHours4", Constant.LIVE_STATUS_GROUP, true),
 	;
 
 	/** Monitored property name exposed to Symphony (matches the reference doc's display name). */
