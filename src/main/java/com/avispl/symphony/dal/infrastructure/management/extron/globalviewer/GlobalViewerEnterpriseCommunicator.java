@@ -29,9 +29,11 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -90,6 +92,52 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * It used when device stop retrieving statistic. Updated each time of called #retrieveMultipleStatistics
 	 */
 	private volatile long validRetrieveStatisticsTimestamp;
+
+	/**
+	 * Room IDs to filter monitored devices by.
+	 */
+	private Set<String> roomFilter = new HashSet<>();
+
+	/**
+	 * Location IDs to filter monitored devices by.
+	 */
+	private Set<String> locationFilter = new HashSet<>();
+
+	/**
+	 * Retrieves {@link #roomFilter}.
+	 *
+	 * @return value of {@link #roomFilter}
+	 */
+	public String getRoomFilter() {
+		return String.join(",", roomFilter);
+	}
+
+	/**
+	 * Sets {@link #roomFilter} value.
+	 *
+	 * @param roomFilter new value of {@link #roomFilter}
+	 */
+	public void setRoomFilter(String roomFilter) {
+		this.roomFilter = Arrays.stream(roomFilter.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+	}
+
+	/**
+	 * Retrieves {@link #locationFilter}.
+	 *
+	 * @return value of {@link #locationFilter}
+	 */
+	public String getLocationFilter() {
+		return String.join(",", locationFilter);
+	}
+
+	/**
+	 * Sets {@link #locationFilter} value.
+	 *
+	 * @param locationFilter new value of {@link #locationFilter}
+	 */
+	public void setLocationFilter(String locationFilter) {
+		this.locationFilter = Arrays.stream(locationFilter.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+	}
 
 	/**
 	 * Cached data
@@ -317,16 +365,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		this.reentrantLock.lock();
 		try {
 			this.authenticate();
-			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), String.valueOf(cachedMonitoringDevice.size()));
-			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), String.valueOf(lastMonitoringCycleDuration));
-
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
 			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
 			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
 
+			Map<String, String> dynamicStatistics = new HashMap<>();
+			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
+			dynamicStatistics.put(Constant.LAST_MONITORING_CYCLE_DURATION, String.valueOf(lastMonitoringCycleDuration));
+
 			this.localExtendedStatistics.setStatistics(statistics);
+			this.localExtendedStatistics.setDynamicStatistics(dynamicStatistics);
 		} finally {
 			this.reentrantLock.unlock();
 		}
@@ -383,8 +433,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			versionProperties.load(this.getClass().getResourceAsStream("/version.properties"));
 			versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(), Constant.NOT_AVAILABLE);
 			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
-			versionProperties.setProperty(General.MONITORED_DEVICES_TOTAL.getProperty(), Constant.NOT_AVAILABLE);
-			versionProperties.setProperty(General.LAST_MONITORING_CYCLE_DURATION.getProperty(), String.valueOf(lastMonitoringCycleDuration));
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
@@ -398,6 +446,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		try {
 			Map<String, Map<String, String>> nextDeviceCache = fetchEntityList(Constant.DEVICES_ENDPOINT, Constant.DEVICES,
 					AggregatedGeneralProperty.DEVICE_ID, AggregatedGeneralProperty.values());
+			nextDeviceCache.entrySet().removeIf(entry -> !matchesDeviceFilters(entry.getValue()));
 			synchronized (cachedMonitoringDevice) {
 				cachedMonitoringDevice.clear();
 				cachedMonitoringDevice.putAll(nextDeviceCache);
@@ -405,6 +454,28 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve devices from response.", e);
 		}
+	}
+
+	/**
+	 * Checks whether a device matches {@link #roomFilter} and {@link #locationFilter} (both must match
+	 * when configured; an empty filter is not applied).
+	 *
+	 * @param cachedData the cached property name/value pairs for the device
+	 * @return {@code true} if the device should be monitored
+	 */
+	private boolean matchesDeviceFilters(Map<String, String> cachedData) {
+		String roomId = cachedData.get(AggregatedGeneralProperty.ROOM_ID.getName());
+		if (!roomFilter.isEmpty() && !roomFilter.contains(roomId)) {
+			return false;
+		}
+		if (!locationFilter.isEmpty()) {
+			Map<String, String> room = roomId == null ? Collections.emptyMap() : cachedRooms.getOrDefault(roomId, Collections.emptyMap());
+			String locationId = room.get(RoomProperty.LOCATION_ID.getName());
+			if (!locationFilter.contains(locationId)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

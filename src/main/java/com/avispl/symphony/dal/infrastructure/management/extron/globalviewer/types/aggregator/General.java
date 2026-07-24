@@ -23,8 +23,6 @@ public enum General implements BaseProperty {
 	ADAPTER_UPTIME("AdapterUptime", "adapter.uptime"),
 	ADAPTER_UPTIME_MIN("AdapterUptime(min)", "adapter.uptime"),
 	ADAPTER_VERSION("AdapterVersion", "adapter.version"),
-	MONITORED_DEVICES_TOTAL("MonitoredDevicesTotal", "adapter.devices.total"),
-	LAST_MONITORING_CYCLE_DURATION("LastMonitoringCycleDuration(sec)", "adapter.last.cycle.duration"),
 	MONITORING_CYCLE_INTERVAL("MonitoringCycleInterval(min)", "adapter.cycle.interval")
 	;
 
