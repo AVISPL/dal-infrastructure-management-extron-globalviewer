@@ -16,6 +16,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.location.LocationProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
 import com.avispl.symphony.dal.util.StringUtils;
@@ -156,6 +157,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedLocations = Collections.synchronizedMap(new HashMap<>());
 
 	/**
+	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
+	 * of alerts.
+	 */
+	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
+
+	/**
 	 * List of aggregated devices populated from {@link #cachedMonitoringDevice}.
 	 */
 	private final List<AggregatedDevice> aggregatedDeviceList = Collections.synchronizedList(new ArrayList<>());
@@ -246,6 +253,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					} catch (Exception e) {
 						logger.error("Error occurred during device list retrieval: " + e.getMessage(), e);
 					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching alerts list");
+						}
+						populateAlertList();
+					} catch (Exception e) {
+						logger.error("Error occurred during alert list retrieval: " + e.getMessage(), e);
+					}
 					nextDevicesCollectionIterationTimestamp = System.currentTimeMillis() + (getMonitoringRate() * 60000L);
 					lastMonitoringCycleDuration = Math.max((System.currentTimeMillis() - startCycle) / 1000, 1L);
 					logger.debug("Finished collecting devices statistics cycle at " + new Date() + ", total duration: " + lastMonitoringCycleDuration);
@@ -303,6 +318,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
+		cachedAlertsByDevice.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -358,7 +374,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-
+		// Alert deletion is a separate story, to be implemented later.
 	}
 
 	@Override
@@ -456,6 +472,56 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve locations from response.", e);
 		}
+	}
+
+	/**
+	 * Populates {@link #cachedAlertsByDevice} by making a GET request to {@link Constant#ALERTS_ENDPOINT},
+	 * grouping alerts under the device ID ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts
+	 * with no resolvable device ID are dropped.
+	 */
+	private void populateAlertList() {
+		try {
+			String jsonResult = this.doGet(Constant.ALERTS_ENDPOINT);
+			Map<String, List<Map<String, String>>> nextAlertCache = parseAlerts(jsonResult);
+			synchronized (cachedAlertsByDevice) {
+				cachedAlertsByDevice.clear();
+				cachedAlertsByDevice.putAll(nextAlertCache);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve alerts from response.", e);
+		}
+	}
+
+	/**
+	 * Parses a raw {@link Constant#ALERTS_ENDPOINT} response, grouping alerts under the device ID
+	 * ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts with no resolvable device ID are
+	 * dropped.
+	 *
+	 * @param jsonResult the raw JSON response body
+	 * @return alerts grouped by device ID; empty if the response is empty/malformed
+	 * @throws Exception if the response cannot be parsed
+	 */
+	Map<String, List<Map<String, String>>> parseAlerts(String jsonResult) throws Exception {
+		JsonNode listResponse = objectMapper.readTree(jsonResult);
+		Map<String, List<Map<String, String>>> nextAlertCache = new HashMap<>();
+		if (listResponse != null && listResponse.has(Constant.ALERTS) && !listResponse.get(Constant.ALERTS).isEmpty()) {
+			for (JsonNode node : listResponse.path(Constant.ALERTS)) {
+				String deviceId = extractValue(node, AlertProperty.DEVICE_ID);
+				if (Constant.NOT_AVAILABLE.equals(deviceId)) {
+					continue;
+				}
+				Map<String, String> alert = new HashMap<>();
+				for (AlertProperty property : AlertProperty.values()) {
+					String value = extractValue(node, property);
+					if (value == null) {
+						continue;
+					}
+					alert.put(property.getName(), value);
+				}
+				nextAlertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+			}
+		}
+		return nextAlertCache;
 	}
 
 	/**
@@ -659,10 +725,36 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				stats.put(entry.getKey(), entry.getValue());
 			}
 		}
+		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId));
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
+	 * position (e.g. {@code Alert_01#MonitorName}). No-op when {@code alerts} is {@code null}.
+	 *
+	 * @param stats the destination device statistics map
+	 * @param alerts the device's alerts (each a property name/value map), or {@code null} if none
+	 */
+	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts) {
+		if (alerts == null) {
+			return;
+		}
+		int index = 1;
+		for (Map<String, String> alert : alerts) {
+			String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
+			for (AlertProperty property : AlertProperty.values()) {
+				if (property == AlertProperty.DEVICE_ID) {
+					continue;
+				}
+				String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+				stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+			}
+			index++;
+		}
 	}
 
 	/**
