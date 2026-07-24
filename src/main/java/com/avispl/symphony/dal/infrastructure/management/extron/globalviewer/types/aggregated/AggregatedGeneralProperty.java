@@ -51,20 +51,10 @@ public enum AggregatedGeneralProperty implements FieldProperty {
 
 	// Live Status - confirmed present (even if defaulted to 0) regardless of lamp count
 	CONNECTION("Connection", "/LiveStatus/Connection", Constant.LIVE_STATUS_GROUP, false),
-	LAMP_HOURS("LampHours(hr)", "/LiveStatus/LampHours", Constant.LIVE_STATUS_GROUP, false),
-	MAX_LAMP_HOURS("MaximumLampHours(hr)", "/LiveStatus/MaxLampHours", Constant.LIVE_STATUS_GROUP, false),
-	OPERATION_HOURS("OperationHours(hr)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
-	FILTER_HOURS("FilterHours(hr)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
-	MAX_FILTER_HOURS("MaximumFilterHours(hr)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
-
-	// Live Status - only present on devices with that many lamps; conditional (omitted, not N/A, when absent)
-	LAMP_HOURS_2("LampHours2(hr)", "/LiveStatus/LampHours2", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_3("LampHours3(hr)", "/LiveStatus/LampHours3", Constant.LIVE_STATUS_GROUP, true),
-	LAMP_HOURS_4("LampHours4(hr)", "/LiveStatus/LampHours4", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS("AverageLampHours(hr)", "/LiveStatus/AverageLampHours", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_2("AverageLampHours2(hr)", "/LiveStatus/AverageLampHours2", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_3("AverageLampHours3(hr)", "/LiveStatus/AverageLampHours3", Constant.LIVE_STATUS_GROUP, true),
-	AVERAGE_LAMP_HOURS_4("AverageLampHours4(hr)", "/LiveStatus/AverageLampHours4", Constant.LIVE_STATUS_GROUP, true),
+	MAX_LAMP_HOURS("MaximumLampUtilization(hr)", "/LiveStatus/MaxLampHours", Constant.LIVE_STATUS_GROUP, false),
+	OPERATION_HOURS("OperationTime(hr)", "/LiveStatus/OperationHours", Constant.LIVE_STATUS_GROUP, false),
+	FILTER_HOURS("FilterUtilization(hr)", "/LiveStatus/FilterHours", Constant.LIVE_STATUS_GROUP, false),
+	MAX_FILTER_HOURS("MaximumFilterUtilization(hr)", "/LiveStatus/MaxFilterHours", Constant.LIVE_STATUS_GROUP, false),
 	;
 
 	/** Monitored property name exposed to Symphony (matches the reference doc's display name). */
