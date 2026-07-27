@@ -477,7 +477,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private void populateAlertList() {
 		try {
-			String jsonResult = this.doGet(Constant.ALERTS_ENDPOINT);
+			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.ALERTS_ENDPOINT));
 			Map<String, List<Map<String, String>>> nextAlertCache = parseAlerts(jsonResult);
 			synchronized (cachedAlertsByDevice) {
 				cachedAlertsByDevice.clear();
