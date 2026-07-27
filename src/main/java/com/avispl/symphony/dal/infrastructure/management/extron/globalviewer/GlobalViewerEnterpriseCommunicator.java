@@ -207,10 +207,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					if (devicePaused) {
 						continue loop;
 					}
-					if (logger.isDebugEnabled()) {
-						logger.debug("Fetching other than aggregated device list");
-					}
-
 					while (nextDevicesCollectionIterationTimestamp > System.currentTimeMillis()) {
 						try {
 							TimeUnit.MILLISECONDS.sleep(1000);
@@ -468,7 +464,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * @throws Exception if the request itself fails
 	 */
 	private <T extends Enum<T> & FieldProperty> Map<String, Map<String, String>> fetchEntityList(String endpoint, String wrapperKey, T idProperty, T[] properties) throws Exception {
-		String jsonResult = this.doGet(endpoint);
+		String jsonResult = this.withSessionRecovery(() -> this.doGet(endpoint));
 		if (logger.isDebugEnabled()) {
 			logger.debug(String.format("Response received from %s. length=%s", endpoint, jsonResult == null ? -1 : jsonResult.length()));
 		}
@@ -489,9 +485,6 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			Map<String, String> mappingValue = new HashMap<>();
 			for (T info : properties) {
 				String value = extractValue(node, info);
-				// Conditional properties (e.g. secondary/tertiary/quaternary lamp trackers, which only
-				// exist for devices with that many physical lamps) are dropped entirely when their field
-				// doesn't resolve, rather than being cached as N/A - see FieldProperty#isConditional().
 				if (value == null) {
 					continue;
 				}
