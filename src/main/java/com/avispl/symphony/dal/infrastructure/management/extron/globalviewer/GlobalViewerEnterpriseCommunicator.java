@@ -16,6 +16,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.location.LocationProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
 import com.avispl.symphony.dal.util.StringUtils;
@@ -32,6 +33,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -39,6 +41,8 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -153,6 +157,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedLocations = Collections.synchronizedMap(new HashMap<>());
 
 	/**
+	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
+	 * of alerts.
+	 */
+	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
+
+	/**
 	 * List of aggregated devices populated from {@link #cachedMonitoringDevice}.
 	 */
 	private final List<AggregatedDevice> aggregatedDeviceList = Collections.synchronizedList(new ArrayList<>());
@@ -239,6 +249,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					} catch (Exception e) {
 						logger.error("Error occurred during device list retrieval: " + e.getMessage(), e);
 					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching alerts list");
+						}
+						populateAlertList();
+					} catch (Exception e) {
+						logger.error("Error occurred during alert list retrieval: " + e.getMessage(), e);
+					}
 					nextDevicesCollectionIterationTimestamp = System.currentTimeMillis() + (getMonitoringRate() * 60000L);
 					lastMonitoringCycleDuration = Math.max((System.currentTimeMillis() - startCycle) / 1000, 1L);
 					logger.debug("Finished collecting devices statistics cycle at " + new Date() + ", total duration: " + lastMonitoringCycleDuration);
@@ -296,6 +314,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
+		cachedAlertsByDevice.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -351,7 +370,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-
+		// Alert deletion is a separate story, to be implemented later.
 	}
 
 	@Override
@@ -452,6 +471,56 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
+	 * Populates {@link #cachedAlertsByDevice} by making a GET request to {@link Constant#ALERTS_ENDPOINT},
+	 * grouping alerts under the device ID ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts
+	 * with no resolvable device ID are dropped.
+	 */
+	private void populateAlertList() {
+		try {
+			String jsonResult = this.doGet(Constant.ALERTS_ENDPOINT);
+			Map<String, List<Map<String, String>>> nextAlertCache = parseAlerts(jsonResult);
+			synchronized (cachedAlertsByDevice) {
+				cachedAlertsByDevice.clear();
+				cachedAlertsByDevice.putAll(nextAlertCache);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve alerts from response.", e);
+		}
+	}
+
+	/**
+	 * Parses a raw {@link Constant#ALERTS_ENDPOINT} response, grouping alerts under the device ID
+	 * ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts with no resolvable device ID are
+	 * dropped.
+	 *
+	 * @param jsonResult the raw JSON response body
+	 * @return alerts grouped by device ID; empty if the response is empty/malformed
+	 * @throws Exception if the response cannot be parsed
+	 */
+	Map<String, List<Map<String, String>>> parseAlerts(String jsonResult) throws Exception {
+		JsonNode listResponse = objectMapper.readTree(jsonResult);
+		Map<String, List<Map<String, String>>> nextAlertCache = new HashMap<>();
+		if (listResponse != null && listResponse.has(Constant.ALERTS) && !listResponse.get(Constant.ALERTS).isEmpty()) {
+			for (JsonNode node : listResponse.path(Constant.ALERTS)) {
+				String deviceId = extractValue(node, AlertProperty.DEVICE_ID);
+				if (Constant.NOT_AVAILABLE.equals(deviceId)) {
+					continue;
+				}
+				Map<String, String> alert = new HashMap<>();
+				for (AlertProperty property : AlertProperty.values()) {
+					String value = extractValue(node, property);
+					if (value == null) {
+						continue;
+					}
+					alert.put(property.getName(), value);
+				}
+				nextAlertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+			}
+		}
+		return nextAlertCache;
+	}
+
+	/**
 	 * Fetches a list of entities from the given endpoint, extracting each entity's properties keyed by
 	 * {@code idProperty}'s resolved value.
 	 *
@@ -490,9 +559,83 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 				mappingValue.put(info.getName(), value);
 			}
+			if (Constant.DEVICES.equals(wrapperKey)) {
+				putDynamicLampUtilization(node, mappingValue);
+			}
 			result.put(id, mappingValue);
 		}
 		return result;
+	}
+
+	/** Matches lamp-hours field names (unsuffixed or numbered) under a device's LiveStatus node. */
+	private static final Pattern LAMP_HOURS_PATTERN = Pattern.compile("LampHours(\\d*)");
+	/** Matches average-lamp-hours field names (unsuffixed or numbered) under a device's LiveStatus node. */
+	private static final Pattern AVERAGE_LAMP_HOURS_PATTERN = Pattern.compile("AverageLampHours(\\d*)");
+
+	/**
+	 * Scans {@code node}'s {@code LiveStatus} fields for however many lamp/average-lamp readings are
+	 * present, and puts them into {@code mappingValue} under fully-qualified keys (e.g.
+	 * {@code LiveStatus#Lamp3Utilization(hr)}), named unindexed if there's only one lamp or indexed
+	 * ({@code Lamp1Utilization(hr)}, {@code Lamp2Utilization(hr)}, ...) otherwise.
+	 *
+	 * @param node the device JSON node
+	 * @param mappingValue the destination cached property map for this device
+	 */
+	private void putDynamicLampUtilization(JsonNode node, Map<String, String> mappingValue) {
+		JsonNode liveStatus = node.path("LiveStatus");
+		Map<Integer, String> lampValues = new HashMap<>();
+		Map<Integer, String> averageLampValues = new HashMap<>();
+
+		Iterator<String> fieldNames = liveStatus.fieldNames();
+		while (fieldNames.hasNext()) {
+			String fieldName = fieldNames.next();
+			putMatchedIndex(liveStatus, fieldName, LAMP_HOURS_PATTERN, lampValues);
+			putMatchedIndex(liveStatus, fieldName, AVERAGE_LAMP_HOURS_PATTERN, averageLampValues);
+		}
+
+		boolean isMultiLamp = lampValues.size() > 1;
+		putIndexedLampEntries(mappingValue, lampValues, isMultiLamp, "Lamp");
+		putIndexedLampEntries(mappingValue, averageLampValues, isMultiLamp, "AverageLamp");
+	}
+
+	/**
+	 * If {@code fieldName} matches {@code pattern}, puts its resolved value into {@code destination}
+	 * keyed by lamp index (unsuffixed = index {@code 1}, numbered = that number); no-op otherwise.
+	 *
+	 * @param parent the JSON node {@code fieldName} belongs to
+	 * @param fieldName the field name to test against {@code pattern}
+	 * @param pattern the field-name pattern to match
+	 * @param destination the map to add the resolved value to, keyed by lamp index
+	 */
+	private void putMatchedIndex(JsonNode parent, String fieldName, Pattern pattern, Map<Integer, String> destination) {
+		Matcher matcher = pattern.matcher(fieldName);
+		if (!matcher.matches()) {
+			return;
+		}
+		String indexGroup = matcher.group(1);
+		int index = StringUtils.isNullOrEmpty(indexGroup, true) ? 1 : Integer.parseInt(indexGroup);
+		String value = parent.path(fieldName).asText();
+		if (StringUtils.isNotNullOrEmpty(value)) {
+			destination.put(index, value);
+		}
+	}
+
+	/**
+	 * Puts each resolved lamp index's value into {@code mappingValue}, named {@code baseName + "Utilization(hr)"}
+	 * (unindexed) or {@code baseName + index + "Utilization(hr)"} depending on {@code isMultiLamp}.
+	 *
+	 * @param mappingValue the destination cached property map for this device
+	 * @param values resolved values keyed by lamp index
+	 * @param isMultiLamp whether the device has more than one lamp
+	 * @param baseName {@code "Lamp"} or {@code "AverageLamp"}
+	 */
+	private void putIndexedLampEntries(Map<String, String> mappingValue, Map<Integer, String> values, boolean isMultiLamp, String baseName) {
+		for (Map.Entry<Integer, String> entry : values.entrySet()) {
+			String indexPart = isMultiLamp ? String.valueOf(entry.getKey()) : Constant.EMPTY;
+			String propertyName = baseName + indexPart + "Utilization(hr)";
+			String key = String.format(Constant.PROPERTY_FORMAT, Constant.LIVE_STATUS_GROUP, propertyName);
+			mappingValue.put(key, entry.getValue());
+		}
 	}
 
 	/**
@@ -567,10 +710,44 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					break;
 			}
 		}
+		// Lamp/average-lamp utilization entries are already fully-qualified stats keys (see
+		// #putDynamicLampUtilization) - no other cached property name contains "#", so this picks up
+		// exactly those and nothing else.
+		for (Map.Entry<String, String> entry : cachedData.entrySet()) {
+			if (entry.getKey().contains("#")) {
+				stats.put(entry.getKey(), entry.getValue());
+			}
+		}
+		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId));
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
+	 * position (e.g. {@code Alert_01#MonitorName}). No-op when {@code alerts} is {@code null}.
+	 *
+	 * @param stats the destination device statistics map
+	 * @param alerts the device's alerts (each a property name/value map), or {@code null} if none
+	 */
+	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts) {
+		if (alerts == null) {
+			return;
+		}
+		int index = 1;
+		for (Map<String, String> alert : alerts) {
+			String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
+			for (AlertProperty property : AlertProperty.values()) {
+				if (property == AlertProperty.DEVICE_ID) {
+					continue;
+				}
+				String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+				stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+			}
+			index++;
+		}
 	}
 
 	/**

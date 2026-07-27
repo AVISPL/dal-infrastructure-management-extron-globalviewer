@@ -28,17 +28,20 @@ public final class Constant {
 	public static final String DEVICES_ENDPOINT = "/devices";
 	public static final String ROOMS_ENDPOINT = "/rooms";
 	public static final String LOCATIONS_ENDPOINT = "/locations";
+	public static final String ALERTS_ENDPOINT = "/alerts";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
 	public static final String LIVE_STATUS_GROUP = "LiveStatus";
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
+	public static final String ALERT_GROUP = "Alert";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
 	public static final String ROOMS = "Rooms";
 	public static final String LOCATIONS = "Locations";
+	public static final String ALERTS = "Alerts";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
