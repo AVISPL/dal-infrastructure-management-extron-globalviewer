@@ -36,7 +36,7 @@ public final class Constant {
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
 	public static final String ALERT_GROUP = "Alert";
-	public static final String ACTIVE_ALERT_GROUP = "ActiveAlert";
+	public static final String ACTIVE_ALERTS_GROUP = "ActiveAlerts";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
