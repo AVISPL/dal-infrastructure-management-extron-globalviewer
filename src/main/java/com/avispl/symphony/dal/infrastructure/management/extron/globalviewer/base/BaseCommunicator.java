@@ -1,6 +1,7 @@
 /** Copyright (c) 2026 AVI-SPL, Inc. All Rights Reserved. */
 package com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base;
 
+import com.avispl.symphony.api.dal.error.CommandFailureException;
 import com.avispl.symphony.api.dal.error.ResourceNotReachableException;
 import com.avispl.symphony.dal.communicator.RestCommunicator;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
@@ -83,5 +84,54 @@ public abstract class BaseCommunicator extends RestCommunicator {
 			headers.set(HttpHeaders.COOKIE, this.sessionID);
 		}
 		return super.putExtraRequestHeaders(httpMethod, uri, headers);
+	}
+
+	/**
+	 * A single REST call (e.g. {@code () -> this.doGet(endpoint)}), to be retried by
+	 * {@link #withSessionRecovery(RestOperation)} after a session recovery.
+	 */
+	@FunctionalInterface
+	protected interface RestOperation {
+		String execute() throws Exception;
+	}
+
+	/**
+	 * Runs {@code operation}, transparently recovering from a server-invalidated session (a stale
+	 * session cookie surfaces as HTTP 401 or 405) by clearing the cached session, re-authenticating,
+	 * and retrying {@code operation} once. Any other failure (bad credentials, network issue,
+	 * unrelated 4xx/5xx, or a retry that still fails) is propagated as-is.
+	 *
+	 * @param operation the REST call to run, and retry once if it fails due to an invalid session
+	 * @return {@code operation}'s result
+	 * @throws Exception if {@code operation} fails for a reason other than a recoverable session,
+	 * or if the retry itself fails
+	 */
+	protected String withSessionRecovery(RestOperation operation) throws Exception {
+		try {
+			return operation.execute();
+		} catch (FailedLoginException | CommandFailureException e) {
+			if (!isSessionInvalid(e)) {
+				throw e;
+			}
+			this.sessionID = "";
+			this.authenticate();
+			return operation.execute();
+		}
+	}
+
+	/**
+	 * Determines whether {@code e} signals a server-invalidated session: either a {@link FailedLoginException}
+	 * (thrown by the framework itself for HTTP 401), or a {@link CommandFailureException} with status
+	 * 401 or 405.
+	 *
+	 * @param e the exception thrown by a REST call
+	 * @return {@code true} if {@code e} indicates the cached session is no longer valid
+	 */
+	private boolean isSessionInvalid(Exception e) {
+		if (e instanceof FailedLoginException) {
+			return true;
+		}
+		int statusCode = ((CommandFailureException) e).getStatusCode();
+		return statusCode == 401 || statusCode == 405;
 	}
 }
