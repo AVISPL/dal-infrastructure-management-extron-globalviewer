@@ -18,6 +18,8 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.location.LocationProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.manufacturer.ManufacturerProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.model.ModelProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
@@ -34,6 +36,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -142,6 +145,34 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
+	 * Maximum number of alerts displayed per device; alerts beyond this many (per device) are dropped.
+	 */
+	private volatile int alertEventsTotal = 10;
+
+	/**
+	 * Retrieves {@link #alertEventsTotal}.
+	 *
+	 * @return value of {@link #alertEventsTotal}
+	 */
+	public String getAlertEventsTotal() {
+		return String.valueOf(alertEventsTotal);
+	}
+
+	/**
+	 * Sets {@link #alertEventsTotal} value; falls back to the default of 10 when invalid or non-positive.
+	 *
+	 * @param alertEventsTotal new value of {@link #alertEventsTotal}
+	 */
+	public void setAlertEventsTotal(String alertEventsTotal) {
+		try {
+			int parsed = Integer.parseInt(alertEventsTotal.trim());
+			this.alertEventsTotal = parsed > 0 ? parsed : 10;
+		} catch (Exception e) {
+			this.alertEventsTotal = 10;
+		}
+	}
+
+	/**
 	 * Cached data
 	 */
 	private final Map<String, Map<String, String>> cachedMonitoringDevice = Collections.synchronizedMap(new HashMap<>());
@@ -158,9 +189,69 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
-	 * of alerts.
+	 * of alerts, capped at {@link #alertEventsTotal}.
 	 */
 	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached GVE Model data, keyed by {@link ModelProperty#ID}.
+	 */
+	private final Map<String, Map<String, String>> cachedModels = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached GVE Manufacturer data, keyed by {@link ManufacturerProperty#ID}.
+	 */
+	private final Map<String, Map<String, String>> cachedManufacturers = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Timestamp of the last full {@link #cachedModels}/{@link #cachedManufacturers} refresh.
+	 */
+	private volatile long lastModelCacheRefreshTimestamp;
+
+	/**
+	 * Hours between full refreshes of {@link #cachedModels}/{@link #cachedManufacturers}.
+	 */
+	private volatile long modelCacheRefreshIntervalHours = 24;
+
+	/**
+	 * Retrieves {@link #modelCacheRefreshIntervalHours}.
+	 *
+	 * @return value of {@link #modelCacheRefreshIntervalHours}
+	 */
+	public String getModelCacheRefreshInterval() {
+		return String.valueOf(modelCacheRefreshIntervalHours);
+	}
+
+	/**
+	 * Sets {@link #modelCacheRefreshIntervalHours}.
+	 *
+	 * @param modelCacheRefreshInterval new value, in hours; falls back to 24 when invalid or non-positive
+	 */
+	public void setModelCacheRefreshInterval(String modelCacheRefreshInterval) {
+		try {
+			long parsed = Long.parseLong(modelCacheRefreshInterval.trim());
+			this.modelCacheRefreshIntervalHours = parsed > 0 ? parsed : 24;
+		} catch (Exception e) {
+			this.modelCacheRefreshIntervalHours = 24;
+		}
+	}
+
+	/**
+	 * Per-device alert summary (true, uncapped total count and the distinct {@link AlertProperty#TYPE}/
+	 * {@link AlertProperty#MONITOR_NAME} values seen), keyed by {@link AlertProperty#DEVICE_ID}.
+	 */
+	private final Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
+	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
+	 * more than one alert.
+	 */
+	static final class AlertSummary {
+		int totalCount;
+		final Set<String> types = new LinkedHashSet<>();
+		final Set<String> monitors = new LinkedHashSet<>();
+	}
 
 	/**
 	 * List of aggregated devices populated from {@link #cachedMonitoringDevice}.
@@ -257,6 +348,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					} catch (Exception e) {
 						logger.error("Error occurred during alert list retrieval: " + e.getMessage(), e);
 					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching model and manufacturer data");
+						}
+						populateModelAndManufacturerData();
+					} catch (Exception e) {
+						logger.error("Error occurred during model/manufacturer retrieval: " + e.getMessage(), e);
+					}
 					nextDevicesCollectionIterationTimestamp = System.currentTimeMillis() + (getMonitoringRate() * 60000L);
 					lastMonitoringCycleDuration = Math.max((System.currentTimeMillis() - startCycle) / 1000, 1L);
 					logger.debug("Finished collecting devices statistics cycle at " + new Date() + ", total duration: " + lastMonitoringCycleDuration);
@@ -315,6 +414,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedRooms.clear();
 		cachedLocations.clear();
 		cachedAlertsByDevice.clear();
+		cachedModels.clear();
+		cachedManufacturers.clear();
+		cachedAlertSummaryByDevice.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -478,10 +580,16 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private void populateAlertList() {
 		try {
 			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.ALERTS_ENDPOINT));
-			Map<String, List<Map<String, String>>> nextAlertCache = parseAlerts(jsonResult);
+			Map<String, List<Map<String, String>>> nextAlertCache = new HashMap<>();
+			Map<String, AlertSummary> nextAlertSummaryCache = new HashMap<>();
+			parseAlerts(jsonResult, nextAlertCache, nextAlertSummaryCache);
 			synchronized (cachedAlertsByDevice) {
 				cachedAlertsByDevice.clear();
 				cachedAlertsByDevice.putAll(nextAlertCache);
+			}
+			synchronized (cachedAlertSummaryByDevice) {
+				cachedAlertSummaryByDevice.clear();
+				cachedAlertSummaryByDevice.putAll(nextAlertSummaryCache);
 			}
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve alerts from response.", e);
@@ -494,12 +602,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * dropped.
 	 *
 	 * @param jsonResult the raw JSON response body
-	 * @return alerts grouped by device ID; empty if the response is empty/malformed
+	 * @param alertCache destination for alerts grouped by device ID, capped at {@link #alertEventsTotal} per device
+	 * @param alertSummaryCache destination for each device's true (uncapped) {@link AlertSummary}
 	 * @throws Exception if the response cannot be parsed
 	 */
-	Map<String, List<Map<String, String>>> parseAlerts(String jsonResult) throws Exception {
+	void parseAlerts(String jsonResult, Map<String, List<Map<String, String>>> alertCache, Map<String, AlertSummary> alertSummaryCache) throws Exception {
 		JsonNode listResponse = objectMapper.readTree(jsonResult);
-		Map<String, List<Map<String, String>>> nextAlertCache = new HashMap<>();
 		if (listResponse != null && listResponse.has(Constant.ALERTS) && !listResponse.get(Constant.ALERTS).isEmpty()) {
 			for (JsonNode node : listResponse.path(Constant.ALERTS)) {
 				String deviceId = extractValue(node, AlertProperty.DEVICE_ID);
@@ -514,10 +622,110 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					}
 					alert.put(property.getName(), value);
 				}
-				nextAlertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+
+				AlertSummary summary = alertSummaryCache.computeIfAbsent(deviceId, id -> new AlertSummary());
+				summary.totalCount++;
+				String type = alert.get(AlertProperty.TYPE.getName());
+				if (StringUtils.isNotNullOrEmpty(type) && !Constant.NOT_AVAILABLE.equals(type)) {
+					summary.types.add(type);
+				}
+				String monitor = alert.get(AlertProperty.MONITOR_NAME.getName());
+				if (StringUtils.isNotNullOrEmpty(monitor) && !Constant.NOT_AVAILABLE.equals(monitor)) {
+					summary.monitors.add(monitor);
+				}
+
+				List<Map<String, String>> alertsForDevice = alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>());
+				// Alerts beyond alertEventsTotal (per device) are dropped, not just hidden - keeps the
+				// cache itself bounded rather than trimming only at display time. The true count/type/monitor
+				// values are still tracked above via alertSummaryCache regardless of this cap.
+				if (alertsForDevice.size() < alertEventsTotal) {
+					alertsForDevice.add(alert);
+				}
 			}
 		}
-		return nextAlertCache;
+	}
+
+	/**
+	 * Resolves {@link #cachedModels}/{@link #cachedManufacturers} for every distinct model/manufacturer ID
+	 * referenced by {@link #cachedMonitoringDevice}, fetching only IDs not already cached. Once every
+	 * {@link #modelCacheRefreshIntervalHours}, both caches are cleared first so renamed/removed entries are
+	 * picked up again.
+	 */
+	private void populateModelAndManufacturerData() {
+		long refreshIntervalMillis = modelCacheRefreshIntervalHours * 3600_000L;
+		if (System.currentTimeMillis() - lastModelCacheRefreshTimestamp >= refreshIntervalMillis) {
+			cachedModels.clear();
+			cachedManufacturers.clear();
+			lastModelCacheRefreshTimestamp = System.currentTimeMillis();
+		}
+
+		Set<String> modelIds;
+		synchronized (cachedMonitoringDevice) {
+			modelIds = cachedMonitoringDevice.values().stream()
+					.map(device -> device.get(AggregatedGeneralProperty.MODEL_ID.getName()))
+					.filter(StringUtils::isNotNullOrEmpty)
+					.collect(Collectors.toSet());
+		}
+		for (String modelId : modelIds) {
+			if (cachedModels.containsKey(modelId)) {
+				continue;
+			}
+			try {
+				Map<String, String> model = fetchSingleEntity(String.format(Constant.MODEL_ENDPOINT, modelId), Constant.MODEL, ModelProperty.values());
+				if (model != null) {
+					cachedModels.put(modelId, model);
+				}
+			} catch (Exception e) {
+				logger.error("Unable to retrieve model " + modelId, e);
+			}
+		}
+
+		Set<String> manufacturerIds = cachedModels.values().stream()
+				.map(model -> model.get(ModelProperty.MANUFACTURER_ID.getName()))
+				.filter(StringUtils::isNotNullOrEmpty)
+				.collect(Collectors.toSet());
+		for (String manufacturerId : manufacturerIds) {
+			if (cachedManufacturers.containsKey(manufacturerId)) {
+				continue;
+			}
+			try {
+				Map<String, String> manufacturer = fetchSingleEntity(String.format(Constant.MANUFACTURER_ENDPOINT, manufacturerId), Constant.MANUFACTURER, ManufacturerProperty.values());
+				if (manufacturer != null) {
+					cachedManufacturers.put(manufacturerId, manufacturer);
+				}
+			} catch (Exception e) {
+				logger.error("Unable to retrieve manufacturer " + manufacturerId, e);
+			}
+		}
+	}
+
+	/**
+	 * Fetches a single entity from the given endpoint, extracting its properties from the object at
+	 * {@code wrapperKey}.
+	 *
+	 * @param endpoint the endpoint to GET
+	 * @param wrapperKey the JSON key wrapping the entity object (e.g. {@link Constant#MODEL})
+	 * @param properties all properties to extract from the entity
+	 * @param <T> the enum type implementing {@link FieldProperty}
+	 * @return the extracted property name/value pairs, or {@code null} if the response is empty/malformed
+	 * @throws Exception if the request itself fails
+	 */
+	private <T extends Enum<T> & FieldProperty> Map<String, String> fetchSingleEntity(String endpoint, String wrapperKey, T[] properties) throws Exception {
+		String jsonResult = this.doGet(endpoint);
+		JsonNode response = objectMapper.readTree(jsonResult);
+		if (response == null || !response.has(wrapperKey) || response.get(wrapperKey).isNull() || response.get(wrapperKey).isMissingNode()) {
+			return null;
+		}
+		JsonNode node = response.path(wrapperKey);
+		Map<String, String> result = new HashMap<>();
+		for (T info : properties) {
+			String value = extractValue(node, info);
+			if (value == null) {
+				continue;
+			}
+			result.put(info.getName(), value);
+		}
+		return result;
 	}
 
 	/**
@@ -700,6 +908,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			switch (info) {
 				case DEVICE_ID:
 				case DEVICE_NAME:
+				case MODEL_ID:
 					continue;
 				case POWER_STATUS:
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
@@ -718,21 +927,25 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				stats.put(entry.getKey(), entry.getValue());
 			}
 		}
-		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId));
+		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId));
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
+		resolveModelAndManufacturer(aggregatedDevice, cachedData);
 		return aggregatedDevice;
 	}
 
 	/**
 	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
-	 * position (e.g. {@code Alert_01#MonitorName}). No-op when {@code alerts} is {@code null}.
+	 * position (e.g. {@code Alert_01#MonitoredCategory}). No-op when {@code alerts} is {@code null}. When
+	 * {@code summary} shows more than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group
+	 * with the true total count and the distinct alert types/monitored categories seen.
 	 *
 	 * @param stats the destination device statistics map
 	 * @param alerts the device's alerts (each a property name/value map), or {@code null} if none
+	 * @param summary the device's true (uncapped) alert summary, or {@code null} if none
 	 */
-	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts) {
+	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary) {
 		if (alerts == null) {
 			return;
 		}
@@ -748,6 +961,29 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			}
 			index++;
 		}
+		if (summary != null && summary.totalCount > 1) {
+			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(summary.totalCount));
+			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Type"), String.join(", ", summary.types));
+			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"), String.join(", ", summary.monitors));
+		}
+	}
+
+	/**
+	 * Resolves the device's model/manufacturer names, chaining the device's model ID through
+	 * {@link #cachedModels} and then {@link #cachedManufacturers}, and sets them on
+	 * {@link AggregatedDevice#setDeviceModel(String)}/{@link AggregatedDevice#setDeviceMake(String)}.
+	 *
+	 * @param aggregatedDevice the device to set the resolved model/make on
+	 * @param cachedData the cached property name/value pairs for the device
+	 */
+	private void resolveModelAndManufacturer(AggregatedDevice aggregatedDevice, Map<String, String> cachedData) {
+		String modelId = cachedData.get(AggregatedGeneralProperty.MODEL_ID.getName());
+		Map<String, String> model = modelId == null ? null : cachedModels.get(modelId);
+		aggregatedDevice.setDeviceModel(model == null ? Constant.NOT_AVAILABLE : model.getOrDefault(ModelProperty.NAME.getName(), Constant.NOT_AVAILABLE));
+
+		String manufacturerId = model == null ? null : model.get(ModelProperty.MANUFACTURER_ID.getName());
+		Map<String, String> manufacturer = manufacturerId == null ? null : cachedManufacturers.get(manufacturerId);
+		aggregatedDevice.setDeviceMake(manufacturer == null ? Constant.NOT_AVAILABLE : manufacturer.getOrDefault(ManufacturerProperty.NAME.getName(), Constant.NOT_AVAILABLE));
 	}
 
 	/**
