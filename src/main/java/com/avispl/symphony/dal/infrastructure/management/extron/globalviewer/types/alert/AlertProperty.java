@@ -20,7 +20,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
 public enum AlertProperty implements FieldProperty {
 	DEVICE_ID("DeviceID", "/DeviceId", "", false),
 	HISTORY_LOG_ID("MonitorHistoryLogID", "/MonitorHistoryLogId", "", false),
-	MONITOR_NAME("MonitorName", "/MonitorName", "", false),
+	MONITOR_NAME("MonitoredCategory", "/MonitorName", "", false),
 	IP_ADDRESS("IPAddress", "/IPAddress", "", false),
 	EVENT_TIME("EventTime(UTC)", "/EventTime", "", false),
 	TYPE("Type", "/AlertType", "", false),
