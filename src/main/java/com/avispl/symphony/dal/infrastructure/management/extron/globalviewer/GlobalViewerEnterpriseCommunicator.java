@@ -198,7 +198,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * A device's true (uncapped) alert count and the distinct alert types/monitors seen across all of
+	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
 	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
 	 * more than one alert.
 	 */
@@ -804,9 +804,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
-	 * position (e.g. {@code Alert_01#MonitorName}). No-op when {@code alerts} is {@code null}. When
+	 * position (e.g. {@code Alert_01#MonitoredCategory}). No-op when {@code alerts} is {@code null}. When
 	 * {@code summary} shows more than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group
-	 * with the true total count and the distinct alert types/monitors seen.
+	 * with the true total count and the distinct alert types/monitored categories seen.
 	 *
 	 * @param stats the destination device statistics map
 	 * @param alerts the device's alerts (each a property name/value map), or {@code null} if none
@@ -831,7 +831,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		if (summary != null && summary.totalCount > 1) {
 			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(summary.totalCount));
 			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Type"), String.join(", ", summary.types));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Monitors"), String.join(", ", summary.monitors));
+			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"), String.join(", ", summary.monitors));
 		}
 	}
 
