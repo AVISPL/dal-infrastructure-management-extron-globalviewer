@@ -29,6 +29,8 @@ public final class Constant {
 	public static final String ROOMS_ENDPOINT = "/rooms";
 	public static final String LOCATIONS_ENDPOINT = "/locations";
 	public static final String ALERTS_ENDPOINT = "/alerts";
+	public static final String MODEL_ENDPOINT = "/devices/model/%s";
+	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -43,6 +45,8 @@ public final class Constant {
 	public static final String ROOMS = "Rooms";
 	public static final String LOCATIONS = "Locations";
 	public static final String ALERTS = "Alerts";
+	public static final String MODEL = "Model";
+	public static final String MANUFACTURER = "Manufacturer";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";

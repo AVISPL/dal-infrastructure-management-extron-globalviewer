@@ -37,6 +37,7 @@ public enum AggregatedGeneralProperty implements FieldProperty {
 	DEVICE_NAME("DeviceName", "/DeviceName", "", false),
 	DEVICE_TYPE("Type", "/DeviceType", "", false),
 	ROOM_ID("RoomID", "/RoomId", "", false),
+	MODEL_ID("ModelId", "/ModelId", "", false),
 	CONTROLLER_ID("ControllerID", "/ControllerId", "", false),
 	CONTROLLER_COMMAND_GUID("ControllerCommandGUID", "/ControllerCommandGuid", "", false),
 	CONTROLLER_PORT_NUMBER("ControllerPortNumber", "/ControllerPortNumber", "", false),
