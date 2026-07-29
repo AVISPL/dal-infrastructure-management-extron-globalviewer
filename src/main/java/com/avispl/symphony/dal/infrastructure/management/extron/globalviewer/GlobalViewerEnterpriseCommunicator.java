@@ -995,7 +995,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 		if (summary != null && summary.totalCount > 1) {
 			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(summary.totalCount));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Type"), String.join(", ", summary.types));
+			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Types"), String.join(", ", summary.types));
 			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"), String.join(", ", summary.monitors));
 		}
 	}
