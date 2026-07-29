@@ -30,9 +30,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -146,7 +149,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Maximum number of alerts displayed per device; alerts beyond this many (per device) are dropped.
+	 * Maximum number of alerts displayed per device; alerts are sorted latest-{@link AlertProperty#EVENT_TIME}-first
+	 * and anything beyond this many (per device) is dropped.
 	 */
 	private volatile int alertEventsTotal = 10;
 
@@ -195,7 +199,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
-	 * of alerts, capped at {@link #alertEventsTotal}.
+	 * of alerts sorted latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal}.
 	 */
 	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
 
@@ -655,7 +659,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * dropped.
 	 *
 	 * @param jsonResult the raw JSON response body
-	 * @param alertCache destination for alerts grouped by device ID, capped at {@link #alertEventsTotal} per device
+	 * @param alertCache destination for alerts grouped by device ID, sorted latest-{@link AlertProperty#EVENT_TIME}-first
+	 * and capped at {@link #alertEventsTotal} per device
 	 * @param alertSummaryCache destination for each device's true (uncapped) {@link AlertSummary}
 	 * @throws Exception if the response cannot be parsed
 	 */
@@ -687,14 +692,37 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					summary.monitors.add(monitor);
 				}
 
-				List<Map<String, String>> alertsForDevice = alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>());
-				// Alerts beyond alertEventsTotal (per device) are dropped, not just hidden - keeps the
-				// cache itself bounded rather than trimming only at display time. The true count/type/monitor
-				// values are still tracked above via alertSummaryCache regardless of this cap.
-				if (alertsForDevice.size() < alertEventsTotal) {
-					alertsForDevice.add(alert);
-				}
+				alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
 			}
+		}
+		// Sort each device's alerts latest-EventTime-first, then drop everything beyond alertEventsTotal.
+		// Sorting happens before capping so the alerts that survive the cap are genuinely the most recent
+		// ones, rather than an arbitrary prefix in whatever order the API returned them in. The true
+		// count/type/monitor values tracked above via alertSummaryCache are unaffected by this cap.
+		for (List<Map<String, String>> alertsForDevice : alertCache.values()) {
+			alertsForDevice.sort(Comparator.comparing(GlobalViewerEnterpriseCommunicator::parseEventTime).reversed());
+			if (alertsForDevice.size() > alertEventsTotal) {
+				alertsForDevice.subList(alertEventsTotal, alertsForDevice.size()).clear();
+			}
+		}
+	}
+
+	/**
+	 * Resolves an alert's {@link AlertProperty#EVENT_TIME} for sorting purposes, tolerating missing or
+	 * malformed values by sorting them last (oldest) rather than throwing or sorting them first.
+	 *
+	 * @param alert the alert's property name/value pairs, as built by {@link #parseAlerts}
+	 * @return the parsed {@link Instant}, or {@link Instant#MIN} if the value is missing/unparsable
+	 */
+	private static Instant parseEventTime(Map<String, String> alert) {
+		String value = alert.get(AlertProperty.EVENT_TIME.getName());
+		if (StringUtils.isNullOrEmpty(value, true) || Constant.NOT_AVAILABLE.equals(value)) {
+			return Instant.MIN;
+		}
+		try {
+			return Instant.parse(value);
+		} catch (DateTimeParseException e) {
+			return Instant.MIN;
 		}
 	}
 
@@ -1034,12 +1062,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
-	 * position (e.g. {@code Alert_01#MonitoredCategory}). No-op when {@code alerts} is {@code null}. When
-	 * {@code summary} shows more than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group
-	 * with the true total count and the distinct alert types/monitored categories seen.
+	 * position (e.g. {@code Alert_01#MonitoredCategory}); since {@code alerts} is expected to already be
+	 * sorted latest-{@link AlertProperty#EVENT_TIME}-first (see {@link #parseAlerts}), {@code Alert_01} is
+	 * the most recent alert. No-op when {@code alerts} is {@code null}. When {@code summary} shows more
+	 * than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group with the true total count
+	 * and the distinct alert types/monitored categories seen.
 	 *
 	 * @param stats the destination device statistics map
-	 * @param alerts the device's alerts (each a property name/value map), or {@code null} if none
+	 * @param alerts the device's alerts (each a property name/value map), sorted latest-first, or
+	 * {@code null} if none
 	 * @param summary the device's true (uncapped) alert summary, or {@code null} if none
 	 */
 	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary) {
