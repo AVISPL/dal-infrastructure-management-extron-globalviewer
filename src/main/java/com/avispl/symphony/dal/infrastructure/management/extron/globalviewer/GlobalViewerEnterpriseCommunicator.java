@@ -40,11 +40,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -255,12 +255,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
 	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
-	 * more than one alert.
+	 * more than one alert. {@code types}/{@code monitors} are kept in a case-insensitive {@link TreeSet} so
+	 * they're always alphabetical, without needing a separate sort step wherever they're displayed.
 	 */
 	static final class AlertSummary {
 		int totalCount;
-		final Set<String> types = new LinkedHashSet<>();
-		final Set<String> monitors = new LinkedHashSet<>();
+		final Set<String> types = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+		final Set<String> monitors = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 	}
 
 	/**
@@ -1061,39 +1062,37 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
-	 * position (e.g. {@code Alert_01#MonitoredCategory}); since {@code alerts} is expected to already be
-	 * sorted latest-{@link AlertProperty#EVENT_TIME}-first (see {@link #parseAlerts}), {@code Alert_01} is
-	 * the most recent alert. No-op when {@code alerts} is {@code null}. When {@code summary} shows more
-	 * than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group with the true total count
-	 * and the distinct alert types/monitored categories seen.
+	 * Puts the given alerts into {@code stats} as indexed {@code Alert_XX} sub-groups (skipped when
+	 * {@code alerts} is {@code null}), plus an always-present {@link Constant#ACTIVE_ALERTS_GROUP} group
+	 * ({@code TotalCount}, {@code Types}, {@code MonitoredCategories} - {@link Constant#NOT_AVAILABLE} when
+	 * there are none).
 	 *
 	 * @param stats the destination device statistics map
-	 * @param alerts the device's alerts (each a property name/value map), sorted latest-first, or
-	 * {@code null} if none
+	 * @param alerts the device's alerts, sorted latest-first, or {@code null} if none
 	 * @param summary the device's true (uncapped) alert summary, or {@code null} if none
 	 */
 	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary) {
-		if (alerts == null) {
-			return;
-		}
-		int index = 1;
-		for (Map<String, String> alert : alerts) {
-			String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
-			for (AlertProperty property : AlertProperty.values()) {
-				if (property == AlertProperty.DEVICE_ID) {
-					continue;
+		if (alerts != null) {
+			int index = 1;
+			for (Map<String, String> alert : alerts) {
+				String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
+				for (AlertProperty property : AlertProperty.values()) {
+					if (property == AlertProperty.DEVICE_ID) {
+						continue;
+					}
+					String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+					stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
 				}
-				String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
-				stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+				index++;
 			}
-			index++;
 		}
-		if (summary != null && summary.totalCount > 1) {
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(summary.totalCount));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Type"), String.join(", ", summary.types));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"), String.join(", ", summary.monitors));
-		}
+
+		int totalCount = summary == null ? 0 : summary.totalCount;
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(totalCount));
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Types"),
+				totalCount == 0 ? Constant.NOT_AVAILABLE : String.join(", ", summary.types));
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"),
+				totalCount == 0 ? Constant.NOT_AVAILABLE : String.join(", ", summary.monitors));
 	}
 
 	/**
