@@ -21,7 +21,9 @@ public final class Constant {
 	public static final String NONE = "None";
 	public static final String EMPTY = "";
 	public static final String ONLINE = "Online";
+	public static final String OFFLINE = "Offline";
 	public static final String ON = "On";
+	public static final String CONTROLLER_MANUFACTURER = "Extron";
 
 	//	Endpoint
 	public static final String AUTH_ENDPOINT = "/auth";
@@ -31,12 +33,14 @@ public final class Constant {
 	public static final String ALERTS_ENDPOINT = "/alerts";
 	public static final String MODEL_ENDPOINT = "/devices/model/%s";
 	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
+	public static final String CONTROLLERS_ENDPOINT = "/controllers";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
 	public static final String LIVE_STATUS_GROUP = "LiveStatus";
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
+	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String ALERT_GROUP = "Alert";
 	public static final String ACTIVE_ALERTS_GROUP = "ActiveAlerts";
 
@@ -47,6 +51,8 @@ public final class Constant {
 	public static final String ALERTS = "Alerts";
 	public static final String MODEL = "Model";
 	public static final String MANUFACTURER = "Manufacturer";
+	public static final String CONTROLLERS = "Controllers";
+	public static final String CONTROLLER = "Controller";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
