@@ -39,11 +39,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -249,12 +249,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
 	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
-	 * more than one alert.
+	 * more than one alert. {@code types}/{@code monitors} are kept in a case-insensitive {@link TreeSet} so
+	 * they're always alphabetical, without needing a separate sort step wherever they're displayed.
 	 */
 	static final class AlertSummary {
 		int totalCount;
-		final Set<String> types = new LinkedHashSet<>();
-		final Set<String> monitors = new LinkedHashSet<>();
+		final Set<String> types = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+		final Set<String> monitors = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 	}
 
 	/**
