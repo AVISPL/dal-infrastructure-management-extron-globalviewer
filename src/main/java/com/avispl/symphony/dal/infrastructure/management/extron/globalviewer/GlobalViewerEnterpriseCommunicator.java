@@ -965,39 +965,37 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Puts the given alerts into {@code stats}, each as its own sub-group keyed by a 1-based, zero-padded
-	 * position (e.g. {@code Alert_01#MonitoredCategory}); since {@code alerts} is expected to already be
-	 * sorted latest-{@link AlertProperty#EVENT_TIME}-first (see {@link #parseAlerts}), {@code Alert_01} is
-	 * the most recent alert. No-op when {@code alerts} is {@code null}. When {@code summary} shows more
-	 * than one alert, also adds an {@link Constant#ACTIVE_ALERTS_GROUP} group with the true total count
-	 * and the distinct alert types/monitored categories seen.
+	 * Puts the given alerts into {@code stats} as indexed {@code Alert_XX} sub-groups (skipped when
+	 * {@code alerts} is {@code null}), plus an always-present {@link Constant#ACTIVE_ALERTS_GROUP} group
+	 * ({@code TotalCount}, {@code Types}, {@code MonitoredCategories} - {@link Constant#NOT_AVAILABLE} when
+	 * there are none).
 	 *
 	 * @param stats the destination device statistics map
-	 * @param alerts the device's alerts (each a property name/value map), sorted latest-first, or
-	 * {@code null} if none
+	 * @param alerts the device's alerts, sorted latest-first, or {@code null} if none
 	 * @param summary the device's true (uncapped) alert summary, or {@code null} if none
 	 */
 	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary) {
-		if (alerts == null) {
-			return;
-		}
-		int index = 1;
-		for (Map<String, String> alert : alerts) {
-			String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
-			for (AlertProperty property : AlertProperty.values()) {
-				if (property == AlertProperty.DEVICE_ID) {
-					continue;
+		if (alerts != null) {
+			int index = 1;
+			for (Map<String, String> alert : alerts) {
+				String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
+				for (AlertProperty property : AlertProperty.values()) {
+					if (property == AlertProperty.DEVICE_ID) {
+						continue;
+					}
+					String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
+					stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
 				}
-				String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
-				stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+				index++;
 			}
-			index++;
 		}
-		if (summary != null && summary.totalCount > 1) {
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(summary.totalCount));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Types"), String.join(", ", summary.types));
-			stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"), String.join(", ", summary.monitors));
-		}
+
+		int totalCount = summary == null ? 0 : summary.totalCount;
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "TotalCount"), String.valueOf(totalCount));
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "Types"),
+				totalCount == 0 ? Constant.NOT_AVAILABLE : String.join(", ", summary.types));
+		stats.put(String.format(Constant.PROPERTY_FORMAT, Constant.ACTIVE_ALERTS_GROUP, "MonitoredCategories"),
+				totalCount == 0 ? Constant.NOT_AVAILABLE : String.join(", ", summary.monitors));
 	}
 
 	/**
