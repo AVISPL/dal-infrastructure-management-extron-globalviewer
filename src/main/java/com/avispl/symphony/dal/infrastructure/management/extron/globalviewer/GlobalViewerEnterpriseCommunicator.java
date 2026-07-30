@@ -977,7 +977,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Builds an {@link AggregatedDevice} from cached monitoring data.
+	 * Builds an {@link AggregatedDevice} from cached monitoring data. {@code deviceId} is prefixed with
+	 * {@value Constant#DEVICE_ID_PREFIX} on the resulting {@link AggregatedDevice#getDeviceId()}, since
+	 * devices and controllers can otherwise share the same raw ID.
 	 *
 	 * @param deviceId the device identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the device
@@ -985,7 +987,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private AggregatedDevice buildAggregatedDevice(String deviceId, Map<String, String> cachedData) {
 		AggregatedDevice aggregatedDevice = new AggregatedDevice();
-		aggregatedDevice.setDeviceId(deviceId);
+		aggregatedDevice.setDeviceId(Constant.DEVICE_ID_PREFIX + deviceId);
 		aggregatedDevice.setDeviceName(cachedData.get(AggregatedGeneralProperty.DEVICE_NAME.getName()));
 		aggregatedDevice.setCategory(cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName()));
 		String connection = cachedData.get(AggregatedGeneralProperty.CONNECTION.getName());
@@ -1032,6 +1034,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * {@code /controllers} response doesn't include a manufacturer, and {@link ControllerProperty#ONLINE}
 	 * (a raw boolean) is exposed as a {@code Connection} stat with {@value Constant#ONLINE}/
 	 * {@value Constant#OFFLINE} wording instead, matching monitored devices' {@code Connection} property.
+	 * {@code controllerId} is prefixed with {@value Constant#CONTROLLER_ID_PREFIX} on the resulting
+	 * {@link AggregatedDevice#getDeviceId()}, since devices and controllers can otherwise share the same
+	 * raw ID.
 	 *
 	 * @param controllerId the controller identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the controller
@@ -1039,7 +1044,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private AggregatedDevice buildAggregatedController(String controllerId, Map<String, String> cachedData) {
 		AggregatedDevice aggregatedDevice = new AggregatedDevice();
-		aggregatedDevice.setDeviceId(controllerId);
+		aggregatedDevice.setDeviceId(Constant.CONTROLLER_ID_PREFIX + controllerId);
 		aggregatedDevice.setDeviceName(cachedData.get(ControllerProperty.NAME.getName()));
 		aggregatedDevice.setCategory(Constant.CONTROLLER);
 		boolean isOnline = Boolean.parseBoolean(cachedData.get(ControllerProperty.ONLINE.getName()));

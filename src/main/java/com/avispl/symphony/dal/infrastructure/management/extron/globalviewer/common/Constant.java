@@ -25,6 +25,8 @@ public final class Constant {
 	public static final String ON = "On";
 	public static final String CONTROLLER_MANUFACTURER = "Extron";
 
+	public static final String DEVICE_ID_PREFIX = "device_";
+	public static final String CONTROLLER_ID_PREFIX = "controller_";
 	//	Endpoint
 	public static final String AUTH_ENDPOINT = "/auth";
 	public static final String DEVICES_ENDPOINT = "/devices";
