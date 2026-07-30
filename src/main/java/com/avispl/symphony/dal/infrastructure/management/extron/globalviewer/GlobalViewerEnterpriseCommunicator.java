@@ -213,30 +213,30 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private volatile long lastModelCacheRefreshTimestamp;
 
 	/**
-	 * Hours between full refreshes of {@link #cachedModels}/{@link #cachedManufacturers}.
+	 * Milliseconds between full refreshes of {@link #cachedModels}/{@link #cachedManufacturers}.
 	 */
-	private volatile long modelCacheRefreshIntervalHours = 24;
+	private volatile long modelInfoRetrievalIntervalMillis = 86_400_000L;
 
 	/**
-	 * Retrieves {@link #modelCacheRefreshIntervalHours}.
+	 * Retrieves {@link #modelInfoRetrievalIntervalMillis}.
 	 *
-	 * @return value of {@link #modelCacheRefreshIntervalHours}
+	 * @return value of {@link #modelInfoRetrievalIntervalMillis}
 	 */
-	public String getModelCacheRefreshInterval() {
-		return String.valueOf(modelCacheRefreshIntervalHours);
+	public String getModelInfoRetrievalInterval() {
+		return String.valueOf(modelInfoRetrievalIntervalMillis);
 	}
 
 	/**
-	 * Sets {@link #modelCacheRefreshIntervalHours}.
+	 * Sets {@link #modelInfoRetrievalIntervalMillis}.
 	 *
-	 * @param modelCacheRefreshInterval new value, in hours; falls back to 24 when invalid or non-positive
+	 * @param modelInfoRetrievalInterval new value, in milliseconds; falls back to 86,400,000 (24 hours) when invalid or non-positive
 	 */
-	public void setModelCacheRefreshInterval(String modelCacheRefreshInterval) {
+	public void setModelInfoRetrievalInterval(String modelInfoRetrievalInterval) {
 		try {
-			long parsed = Long.parseLong(modelCacheRefreshInterval.trim());
-			this.modelCacheRefreshIntervalHours = parsed > 0 ? parsed : 24;
+			long parsed = Long.parseLong(modelInfoRetrievalInterval.trim());
+			this.modelInfoRetrievalIntervalMillis = parsed > 0 ? parsed : 86_400_000L;
 		} catch (Exception e) {
-			this.modelCacheRefreshIntervalHours = 24;
+			this.modelInfoRetrievalIntervalMillis = 86_400_000L;
 		}
 	}
 
@@ -677,12 +677,11 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * Resolves {@link #cachedModels}/{@link #cachedManufacturers} for every distinct model/manufacturer ID
 	 * referenced by {@link #cachedMonitoringDevice}, fetching only IDs not already cached. Once every
-	 * {@link #modelCacheRefreshIntervalHours}, both caches are cleared first so renamed/removed entries are
+	 * {@link #modelInfoRetrievalIntervalMillis}, both caches are cleared first so renamed/removed entries are
 	 * picked up again.
 	 */
 	private void populateModelAndManufacturerData() {
-		long refreshIntervalMillis = modelCacheRefreshIntervalHours * 3600_000L;
-		if (System.currentTimeMillis() - lastModelCacheRefreshTimestamp >= refreshIntervalMillis) {
+		if (System.currentTimeMillis() - lastModelCacheRefreshTimestamp >= modelInfoRetrievalIntervalMillis) {
 			cachedModels.clear();
 			cachedManufacturers.clear();
 			lastModelCacheRefreshTimestamp = System.currentTimeMillis();
