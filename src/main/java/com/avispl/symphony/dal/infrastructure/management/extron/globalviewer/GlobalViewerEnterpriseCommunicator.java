@@ -333,7 +333,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateRoomList();
 					} catch (Exception e) {
-						logger.error("Error occurred during room list retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during room list retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -341,7 +341,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateLocationList();
 					} catch (Exception e) {
-						logger.error("Error occurred during location list retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during location list retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -349,7 +349,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateControllerList();
 					} catch (Exception e) {
-						logger.error("Error occurred during controller list retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during controller list retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -357,7 +357,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateListDevice();
 					} catch (Exception e) {
-						logger.error("Error occurred during device list retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during device list retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -365,7 +365,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateAlertList();
 					} catch (Exception e) {
-						logger.error("Error occurred during alert list retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during alert list retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -373,7 +373,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						}
 						populateModelAndManufacturerData();
 					} catch (Exception e) {
-						logger.error("Error occurred during model/manufacturer retrieval: " + e.getMessage(), e);
+						logger.error("Error occurred during model/manufacturer retrieval", e);
 					}
 					nextDevicesCollectionIterationTimestamp = System.currentTimeMillis() + (getMonitoringRate() * 60000L);
 					lastMonitoringCycleDuration = Math.max((System.currentTimeMillis() - startCycle) / 1000, 1L);
