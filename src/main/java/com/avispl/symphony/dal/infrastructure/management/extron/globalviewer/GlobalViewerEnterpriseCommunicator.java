@@ -219,6 +219,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private volatile long lastModelCacheRefreshTimestamp;
 
 	/**
+	 * Minimum allowed value for {@link #modelInfoRetrievalIntervalMillis} (1 hour); values entered below
+	 * this are clamped up to it rather than rejected.
+	 */
+	private static final long MIN_MODEL_INFO_RETRIEVAL_INTERVAL_MILLIS = 3_600_000L;
+
+	/**
 	 * Milliseconds between full refreshes of {@link #cachedModels}/{@link #cachedManufacturers}.
 	 */
 	private volatile long modelInfoRetrievalIntervalMillis = 86_400_000L;
@@ -235,12 +241,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * Sets {@link #modelInfoRetrievalIntervalMillis}.
 	 *
-	 * @param modelInfoRetrievalInterval new value, in milliseconds; falls back to 86,400,000 (24 hours) when invalid or non-positive
+	 * @param modelInfoRetrievalInterval new value, in milliseconds; falls back to 86,400,000 (24 hours) when
+	 * invalid or non-positive, and is clamped up to {@link #MIN_MODEL_INFO_RETRIEVAL_INTERVAL_MILLIS} (1 hour)
+	 * when positive but below it
 	 */
 	public void setModelInfoRetrievalInterval(String modelInfoRetrievalInterval) {
 		try {
 			long parsed = Long.parseLong(modelInfoRetrievalInterval.trim());
-			this.modelInfoRetrievalIntervalMillis = parsed > 0 ? parsed : 86_400_000L;
+			this.modelInfoRetrievalIntervalMillis = parsed > 0 ? Math.max(parsed, MIN_MODEL_INFO_RETRIEVAL_INTERVAL_MILLIS) : 86_400_000L;
 		} catch (Exception e) {
 			this.modelInfoRetrievalIntervalMillis = 86_400_000L;
 		}
