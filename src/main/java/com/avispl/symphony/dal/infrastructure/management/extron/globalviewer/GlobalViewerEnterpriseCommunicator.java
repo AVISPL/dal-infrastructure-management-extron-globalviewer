@@ -149,6 +149,62 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
+	 * {@link AlertProperty#TYPE} values to filter displayed alerts by, matched case-insensitively; combined
+	 * with {@link #alertMonitorCategoryFilter} using AND when both are configured (an empty filter isn't
+	 * applied). Only affects which alerts get an {@code Alert_XX} display group - the {@code ActiveAlerts}
+	 * summary is unaffected and always reflects every alert.
+	 */
+	private Set<String> alertTypeFilter = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+	/**
+	 * {@link AlertProperty#MONITOR_NAME} values to filter displayed alerts by, matched case-insensitively;
+	 * combined with {@link #alertTypeFilter} using AND when both are configured (an empty filter isn't
+	 * applied). Only affects which alerts get an {@code Alert_XX} display group - the {@code ActiveAlerts}
+	 * summary is unaffected and always reflects every alert.
+	 */
+	private Set<String> alertMonitorCategoryFilter = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+	/**
+	 * Retrieves {@link #alertTypeFilter}.
+	 *
+	 * @return value of {@link #alertTypeFilter}
+	 */
+	public String getAlertTypeFilter() {
+		return String.join(",", alertTypeFilter);
+	}
+
+	/**
+	 * Sets {@link #alertTypeFilter} value.
+	 *
+	 * @param alertTypeFilter new value of {@link #alertTypeFilter}, comma-separated
+	 */
+	public void setAlertTypeFilter(String alertTypeFilter) {
+		this.alertTypeFilter = Arrays.stream(alertTypeFilter.split(","))
+				.map(String::trim).filter(StringUtils::isNotNullOrEmpty)
+				.collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+	}
+
+	/**
+	 * Retrieves {@link #alertMonitorCategoryFilter}.
+	 *
+	 * @return value of {@link #alertMonitorCategoryFilter}
+	 */
+	public String getAlertMonitorCategoryFilter() {
+		return String.join(",", alertMonitorCategoryFilter);
+	}
+
+	/**
+	 * Sets {@link #alertMonitorCategoryFilter} value.
+	 *
+	 * @param alertMonitorCategoryFilter new value of {@link #alertMonitorCategoryFilter}, comma-separated
+	 */
+	public void setAlertMonitorCategoryFilter(String alertMonitorCategoryFilter) {
+		this.alertMonitorCategoryFilter = Arrays.stream(alertMonitorCategoryFilter.split(","))
+				.map(String::trim).filter(StringUtils::isNotNullOrEmpty)
+				.collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+	}
+
+	/**
 	 * Maximum number of alerts displayed per device; alerts are sorted latest-{@link AlertProperty#EVENT_TIME}-first
 	 * and anything beyond this many (per device) is dropped.
 	 */
@@ -581,6 +637,25 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
+	 * Checks whether an alert matches {@link #alertTypeFilter} and {@link #alertMonitorCategoryFilter}
+	 * (both must match when configured, matched case-insensitively; an empty filter is not applied).
+	 * Only gates whether the alert is added to {@link #cachedAlertsByDevice} (the displayed {@code Alert_XX}
+	 * groups) - the device's {@link AlertSummary} always reflects every alert regardless of this filter.
+	 *
+	 * @param alert the alert's property name/value pairs, as built by {@link #parseAlerts}
+	 * @return {@code true} if the alert should be displayed
+	 */
+	private boolean matchesAlertFilters(Map<String, String> alert) {
+		if (!alertTypeFilter.isEmpty() && !alertTypeFilter.contains(alert.get(AlertProperty.TYPE.getName()))) {
+			return false;
+		}
+		if (!alertMonitorCategoryFilter.isEmpty() && !alertMonitorCategoryFilter.contains(alert.get(AlertProperty.MONITOR_NAME.getName()))) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
 	 * Populates {@link #cachedRooms} by making a GET request to {@link Constant#ROOMS_ENDPOINT}.
 	 */
 	private void populateRoomList() {
@@ -657,12 +732,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * Parses a raw {@link Constant#ALERTS_ENDPOINT} response, grouping alerts under the device ID
 	 * ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts with no resolvable device ID are
-	 * dropped.
+	 * dropped entirely. {@link #matchesAlertFilters} only controls which alerts make it into
+	 * {@code alertCache} (the displayed {@code Alert_XX} groups) - {@code alertSummaryCache} always
+	 * reflects every alert, filtered or not.
 	 *
 	 * @param jsonResult the raw JSON response body
-	 * @param alertCache destination for alerts grouped by device ID, sorted latest-{@link AlertProperty#EVENT_TIME}-first
-	 * and capped at {@link #alertEventsTotal} per device
-	 * @param alertSummaryCache destination for each device's true (uncapped) {@link AlertSummary}
+	 * @param alertCache destination for alerts grouped by device ID, filtered by {@link #matchesAlertFilters},
+	 * sorted latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal} per device
+	 * @param alertSummaryCache destination for each device's true (unfiltered, uncapped) {@link AlertSummary}
 	 * @throws Exception if the response cannot be parsed
 	 */
 	void parseAlerts(String jsonResult, Map<String, List<Map<String, String>>> alertCache, Map<String, AlertSummary> alertSummaryCache) throws Exception {
@@ -682,6 +759,8 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					alert.put(property.getName(), value);
 				}
 
+				// The summary always reflects every alert regardless of alertTypeFilter/alertMonitorCategoryFilter -
+				// those filters only decide what's added to alertCache below (the displayed Alert_XX groups).
 				AlertSummary summary = alertSummaryCache.computeIfAbsent(deviceId, id -> new AlertSummary());
 				summary.totalCount++;
 				String type = alert.get(AlertProperty.TYPE.getName());
@@ -693,7 +772,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					summary.monitors.add(monitor);
 				}
 
-				alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+				if (matchesAlertFilters(alert)) {
+					alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+				}
 			}
 		}
 		// Sort each device's alerts latest-EventTime-first, then drop everything beyond alertEventsTotal.
