@@ -1034,16 +1034,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Builds an {@link AggregatedDevice} from cached controller data, surfacing the controller as its own
-	 * aggregated device (category {@value Constant#CONTROLLER}) rather than an adapter-level stat.
-	 * {@link ControllerProperty#MODEL_NAME} is mapped onto {@code deviceModel} rather than exposed as a
-	 * stat, {@code deviceMake} is hardcoded to {@value Constant#CONTROLLER_MANUFACTURER} since the
-	 * {@code /controllers} response doesn't include a manufacturer, and {@link ControllerProperty#ONLINE}
-	 * (a raw boolean) is exposed as a {@code Connection} stat with {@value Constant#ONLINE}/
-	 * {@value Constant#OFFLINE} wording instead, matching monitored devices' {@code Connection} property.
-	 * {@code controllerId} is prefixed with {@value Constant#CONTROLLER_ID_PREFIX} on the resulting
-	 * {@link AggregatedDevice#getDeviceId()}, since devices and controllers can otherwise share the same
-	 * raw ID.
+	 * Builds an {@link AggregatedDevice} from cached controller data, surfaced as its own aggregated device
+	 * (category {@value Constant#CONTROLLER}). {@link ControllerProperty#MODEL_NAME} maps to {@code deviceModel}
+	 * instead of being exposed as a stat; {@link ControllerProperty#MAC_ADDRESS} maps to {@code macAddresses}
+	 * in addition to still being exposed as a stat. {@code deviceMake} is hardcoded to
+	 * {@value Constant#CONTROLLER_MANUFACTURER} since the {@code /controllers} response has no manufacturer.
+	 * {@code controllerId} is prefixed with {@value Constant#CONTROLLER_ID_PREFIX} to avoid ID collisions with devices.
 	 *
 	 * @param controllerId the controller identifier (cache key)
 	 * @param cachedData the cached property name/value pairs for the controller
@@ -1058,11 +1054,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		aggregatedDevice.setDeviceOnline(isOnline);
 		aggregatedDevice.setDeviceModel(cachedData.getOrDefault(ControllerProperty.MODEL_NAME.getName(), Constant.NOT_AVAILABLE));
 		aggregatedDevice.setDeviceMake(Constant.CONTROLLER_MANUFACTURER);
+		String macAddress = cachedData.get(ControllerProperty.MAC_ADDRESS.getName());
+		if (StringUtils.isNotNullOrEmpty(macAddress) && !Constant.NOT_AVAILABLE.equals(macAddress)) {
+			aggregatedDevice.setMacAddresses(Collections.singletonList(macAddress));
+		}
 
 		Map<String, String> stats = new HashMap<>();
-		stats.put(AggregatedGeneralProperty.CONNECTION.getName(), isOnline ? Constant.ONLINE : Constant.OFFLINE);
 		for (ControllerProperty property : ControllerProperty.values()) {
-			if (property == ControllerProperty.ID || property == ControllerProperty.NAME || property == ControllerProperty.MODEL_NAME || property == ControllerProperty.ONLINE) {
+			if (property == ControllerProperty.ID || property == ControllerProperty.NAME
+					|| property == ControllerProperty.MODEL_NAME || property == ControllerProperty.ONLINE) {
 				continue;
 			}
 			putGroupedProperty(stats, cachedData, property);
