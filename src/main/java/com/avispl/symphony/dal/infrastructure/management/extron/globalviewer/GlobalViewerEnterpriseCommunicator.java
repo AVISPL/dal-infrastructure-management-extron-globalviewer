@@ -150,7 +150,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/**
 	 * {@link AlertProperty#TYPE} values to filter displayed alerts by, matched case-insensitively; combined
-	 * with {@link #alertMonitorCategoryFilter} using AND when both are configured (an empty filter isn't
+	 * with {@link #alertMonitoredCategoryFilter} using AND when both are configured (an empty filter isn't
 	 * applied). Only affects which alerts get an {@code Alert_XX} display group - the {@code ActiveAlerts}
 	 * summary is unaffected and always reflects every alert.
 	 */
@@ -162,7 +162,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * applied). Only affects which alerts get an {@code Alert_XX} display group - the {@code ActiveAlerts}
 	 * summary is unaffected and always reflects every alert.
 	 */
-	private Set<String> alertMonitorCategoryFilter = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+	private Set<String> alertMonitoredCategoryFilter = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
 	/**
 	 * Retrieves {@link #alertTypeFilter}.
@@ -185,21 +185,21 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Retrieves {@link #alertMonitorCategoryFilter}.
+	 * Retrieves {@link #alertMonitoredCategoryFilter}.
 	 *
-	 * @return value of {@link #alertMonitorCategoryFilter}
+	 * @return value of {@link #alertMonitoredCategoryFilter}
 	 */
-	public String getAlertMonitorCategoryFilter() {
-		return String.join(",", alertMonitorCategoryFilter);
+	public String getAlertMonitoredCategoryFilter() {
+		return String.join(",", alertMonitoredCategoryFilter);
 	}
 
 	/**
-	 * Sets {@link #alertMonitorCategoryFilter} value.
+	 * Sets {@link #alertMonitoredCategoryFilter} value.
 	 *
-	 * @param alertMonitorCategoryFilter new value of {@link #alertMonitorCategoryFilter}, comma-separated
+	 * @param alertMonitoredCategoryFilter new value of {@link #alertMonitoredCategoryFilter}, comma-separated
 	 */
-	public void setAlertMonitorCategoryFilter(String alertMonitorCategoryFilter) {
-		this.alertMonitorCategoryFilter = Arrays.stream(alertMonitorCategoryFilter.split(","))
+	public void setAlertMonitoredCategoryFilter(String alertMonitoredCategoryFilter) {
+		this.alertMonitoredCategoryFilter = Arrays.stream(alertMonitoredCategoryFilter.split(","))
 				.map(String::trim).filter(StringUtils::isNotNullOrEmpty)
 				.collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
 	}
@@ -637,7 +637,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Checks whether an alert matches {@link #alertTypeFilter} and {@link #alertMonitorCategoryFilter}
+	 * Checks whether an alert matches {@link #alertTypeFilter} and {@link #alertMonitoredCategoryFilter}
 	 * (both must match when configured, matched case-insensitively; an empty filter is not applied).
 	 * Only gates whether the alert is added to {@link #cachedAlertsByDevice} (the displayed {@code Alert_XX}
 	 * groups) - the device's {@link AlertSummary} always reflects every alert regardless of this filter.
@@ -649,7 +649,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		if (!alertTypeFilter.isEmpty() && !alertTypeFilter.contains(alert.get(AlertProperty.TYPE.getName()))) {
 			return false;
 		}
-		if (!alertMonitorCategoryFilter.isEmpty() && !alertMonitorCategoryFilter.contains(alert.get(AlertProperty.MONITOR_NAME.getName()))) {
+		if (!alertMonitoredCategoryFilter.isEmpty() && !alertMonitoredCategoryFilter.contains(alert.get(AlertProperty.MONITOR_NAME.getName()))) {
 			return false;
 		}
 		return true;
@@ -759,7 +759,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					alert.put(property.getName(), value);
 				}
 
-				// The summary always reflects every alert regardless of alertTypeFilter/alertMonitorCategoryFilter -
+				// The summary always reflects every alert regardless of alertTypeFilter/alertMonitoredCategoryFilter -
 				// those filters only decide what's added to alertCache below (the displayed Alert_XX groups).
 				AlertSummary summary = alertSummaryCache.computeIfAbsent(deviceId, id -> new AlertSummary());
 				summary.totalCount++;
