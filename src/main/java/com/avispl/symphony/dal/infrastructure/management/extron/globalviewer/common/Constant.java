@@ -36,12 +36,20 @@ public final class Constant {
 	public static final String MODEL_ENDPOINT = "/devices/model/%s";
 	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
 	public static final String CONTROLLERS_ENDPOINT = "/controllers";
+	public static final String SYSTEM_ENDPOINT = "/system";
+	public static final String MONITORING_SERVICE_ENDPOINT = "/services/monitoring";
+	public static final String SCHEDULING_SERVICE_ENDPOINT = "/services/scheduling";
+	public static final String SERVICES_ENDPOINT = "/services";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
 	public static final String LIVE_STATUS_GROUP = "LiveStatus";
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
+	public static final String GVE_SYSTEM_GROUP = "GVESystem";
+	public static final String MONITORING_SERVICE_GROUP = "GVEMonitoringService";
+	public static final String SCHEDULING_SERVICE_GROUP = "GVESchedulingService";
+	public static final String GVE_SERVICES_GROUP = "GVEServices";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
@@ -56,6 +64,8 @@ public final class Constant {
 	public static final String MANUFACTURER = "Manufacturer";
 	public static final String CONTROLLERS = "Controllers";
 	public static final String CONTROLLER = "Controller";
+	public static final String WINDOWS_SERVICE = "WindowsService";
+	public static final String WINDOW_SERVICES = "WindowServices";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
