@@ -43,6 +43,7 @@ public final class Constant {
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
+	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
 	public static final String ACTIVE_ALERTS_GROUP = "ActiveAlerts";
 
