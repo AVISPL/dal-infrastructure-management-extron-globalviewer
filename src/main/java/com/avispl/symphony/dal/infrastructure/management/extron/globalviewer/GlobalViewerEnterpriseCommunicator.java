@@ -1107,6 +1107,11 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			}
 		}
 		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId));
+
+		Map<String, String> dynamicStatistics = new HashMap<>();
+		dynamicStatistics.put(AggregatedGeneralProperty.POWER_ON_POWER_CONSUMPTION.getName(), stats.get(AggregatedGeneralProperty.POWER_ON_POWER_CONSUMPTION.getName()));
+		dynamicStatistics.put(AggregatedGeneralProperty.POWER_OFF_POWER_CONSUMPTION.getName(), stats.get(AggregatedGeneralProperty.POWER_OFF_POWER_CONSUMPTION.getName()));
+		aggregatedDevice.setDynamicStatistics(dynamicStatistics);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
