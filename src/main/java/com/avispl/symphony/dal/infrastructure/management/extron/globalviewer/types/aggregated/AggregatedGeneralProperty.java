@@ -47,7 +47,7 @@ public enum AggregatedGeneralProperty implements FieldProperty {
 	LAMP_COST("LampCost($)", "/LampCost", "", false),
 	POWER_ON_POWER_CONSUMPTION("PowerOnPowerConsumption(W)", "/PowerOnPowerConsumption", "", false),
 	POWER_OFF_POWER_CONSUMPTION("PowerOffPowerConsumption(W)", "/PowerOffPowerConsumption", "", false),
-	POWER_STATUS("PowerStatus", "/LiveStatus/DeviceStatus", "", false),
+	POWER_STATUS("PowerStatus", "/LiveStatus/Power", "", false),
 
 	// Live Status - confirmed present (even if defaulted to 0) regardless of lamp count
 	CONNECTION("Connection", "/LiveStatus/Connection", Constant.LIVE_STATUS_GROUP, false),
