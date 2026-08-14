@@ -23,7 +23,9 @@ public final class Constant {
 	public static final String ONLINE = "Online";
 	public static final String OFFLINE = "Offline";
 	public static final String ON = "On";
+	public static final String OFF = "Off";
 	public static final String ACTIVE = "Active";
+	public static final String INACTIVE = "Inactive";
 	public static final String CONTROLLER_MANUFACTURER = "Extron";
 
 	public static final String DEVICE_ID_PREFIX = "device_";

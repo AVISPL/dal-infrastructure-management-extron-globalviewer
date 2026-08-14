@@ -584,6 +584,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			String rawDeviceId = aggregatedDeviceId.substring(Constant.DEVICE_ID_PREFIX.length());
 			if (Constant.POWER_PROPERTY.equals(property)) {
 				sendDeviceCommand(rawDeviceId, Constant.ACTION_NAME_POWER, value);
+				updateCachedReadback(cachedMonitoringDevice, rawDeviceId, AggregatedGeneralProperty.POWER_STATUS.getName(), value == 1 ? Constant.ON : Constant.OFF);
 			}
 			return;
 		}
@@ -594,6 +595,25 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		String rawControllerId = aggregatedDeviceId.substring(Constant.CONTROLLER_ID_PREFIX.length());
 		if (Constant.POWER_PROPERTY.equals(property)) {
 			sendControllerCommand(rawControllerId, Constant.ACTION_NAME_POWER, value);
+			updateCachedReadback(cachedControllers, rawControllerId, ControllerProperty.STATUS.getName(), value == 1 ? Constant.ACTIVE : Constant.INACTIVE);
+		}
+	}
+
+	/**
+	 * Optimistically updates a cached readback field right after a GVE command succeeds, so the next poll
+	 * reflects it immediately. No-ops if the entity isn't cached.
+	 *
+	 * @param cache the outer cache map ({@link #cachedMonitoringDevice} or {@link #cachedControllers})
+	 * @param rawId the entity's raw (unprefixed) ID - the cache key
+	 * @param fieldName the readback field to update
+	 * @param value the new value to reflect
+	 */
+	private static void updateCachedReadback(Map<String, Map<String, String>> cache, String rawId, String fieldName, String value) {
+		synchronized (cache) {
+			Map<String, String> entry = cache.get(rawId);
+			if (entry != null) {
+				entry.put(fieldName, value);
+			}
 		}
 	}
 
