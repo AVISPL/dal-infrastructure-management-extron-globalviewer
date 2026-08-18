@@ -39,7 +39,7 @@ public final class Constant {
 	public static final String SYSTEM_ENDPOINT = "/system";
 	public static final String MONITORING_SERVICE_ENDPOINT = "/services/monitoring";
 	public static final String SCHEDULING_SERVICE_ENDPOINT = "/services/scheduling";
-	public static final String SERVICES_ENDPOINT = "/services";
+	public static final String UDP_LISTENER_SERVICE_ENDPOINT = "/services/udplistener";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -49,7 +49,7 @@ public final class Constant {
 	public static final String GVE_SYSTEM_GROUP = "GVESystem";
 	public static final String MONITORING_SERVICE_GROUP = "GVEMonitoringService";
 	public static final String SCHEDULING_SERVICE_GROUP = "GVESchedulingService";
-	public static final String GVE_SERVICES_GROUP = "GVEServices";
+	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEUdpListenerService";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
@@ -65,7 +65,6 @@ public final class Constant {
 	public static final String CONTROLLERS = "Controllers";
 	public static final String CONTROLLER = "Controller";
 	public static final String WINDOWS_SERVICE = "WindowsService";
-	public static final String WINDOW_SERVICES = "WindowServices";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";

@@ -22,8 +22,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.manufacturer.ManufacturerProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.model.ModelProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.service.MonitoringServiceProperty;
-import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.service.SchedulingServiceProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.service.ServiceProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.system.SystemProperty;
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
@@ -278,11 +277,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, String> cachedSchedulingServiceInfo = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * Cached "Aggregator &gt; GVE Services" info from {@link Constant#SERVICES_ENDPOINT}, keyed by each
-	 * service's own name, holding its status - excludes whatever is already surfaced via
-	 * {@link #cachedMonitoringServiceInfo}/{@link #cachedSchedulingServiceInfo} to avoid showing those twice.
+	 * Cached "Aggregator &gt; GVE UDP Listener Service" info from {@link Constant#UDP_LISTENER_SERVICE_ENDPOINT}.
 	 */
-	private final Map<String, String> cachedOtherServicesInfo = Collections.synchronizedMap(new HashMap<>());
+	private final Map<String, String> cachedUdpListenerServiceInfo = Collections.synchronizedMap(new HashMap<>());
 
 	/**
 	 * Cached GVE Model data, keyed by {@link ModelProperty#ID}.
@@ -458,11 +455,11 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					}
 					try {
 						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching other services info");
+							logger.debug("Fetching UDP listener service info");
 						}
-						populateOtherServicesInfo();
+						populateUdpListenerServiceInfo();
 					} catch (Exception e) {
-						logger.error("Error occurred during other services info retrieval", e);
+						logger.error("Error occurred during UDP listener service info retrieval", e);
 					}
 					try {
 						if (logger.isDebugEnabled()) {
@@ -556,7 +553,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedSystemInfo.clear();
 		cachedMonitoringServiceInfo.clear();
 		cachedSchedulingServiceInfo.clear();
-		cachedOtherServicesInfo.clear();
+		cachedUdpListenerServiceInfo.clear();
 		cachedControllers.clear();
 		cachedAlertsByDevice.clear();
 		cachedModels.clear();
@@ -580,16 +577,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			for (SystemProperty property : SystemProperty.values()) {
 				putGroupedProperty(statistics, cachedSystemInfo, property);
 			}
-			for (MonitoringServiceProperty property : MonitoringServiceProperty.values()) {
-				putGroupedProperty(statistics, cachedMonitoringServiceInfo, property);
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedMonitoringServiceInfo, property, Constant.MONITORING_SERVICE_GROUP);
 			}
-			for (SchedulingServiceProperty property : SchedulingServiceProperty.values()) {
-				putGroupedProperty(statistics, cachedSchedulingServiceInfo, property);
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedSchedulingServiceInfo, property, Constant.SCHEDULING_SERVICE_GROUP);
 			}
-			synchronized (cachedOtherServicesInfo) {
-				for (Map.Entry<String, String> entry : cachedOtherServicesInfo.entrySet()) {
-					statistics.put(String.format(Constant.PROPERTY_FORMAT, Constant.GVE_SERVICES_GROUP, entry.getKey()), entry.getValue());
-				}
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedUdpListenerServiceInfo, property, Constant.UDP_LISTENER_SERVICE_GROUP);
 			}
 
 			Map<String, String> dynamicStatistics = new HashMap<>();
@@ -804,7 +799,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private void populateMonitoringServiceInfo() {
 		try {
-			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.MONITORING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, MonitoringServiceProperty.values());
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.MONITORING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
 			synchronized (cachedMonitoringServiceInfo) {
 				cachedMonitoringServiceInfo.clear();
 				if (nextServiceInfo != null) {
@@ -822,7 +817,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private void populateSchedulingServiceInfo() {
 		try {
-			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.SCHEDULING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, SchedulingServiceProperty.values());
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.SCHEDULING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
 			synchronized (cachedSchedulingServiceInfo) {
 				cachedSchedulingServiceInfo.clear();
 				if (nextServiceInfo != null) {
@@ -835,37 +830,20 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates {@link #cachedOtherServicesInfo} by making a GET request to {@link Constant#SERVICES_ENDPOINT}.
-	 * The response is an array of Windows services (same {@code Service}/{@code Status} shape as
-	 * {@link Constant#WINDOWS_SERVICE}) that may include more than just monitoring/scheduling; whichever of
-	 * those two are already surfaced via {@link #cachedMonitoringServiceInfo}/{@link #cachedSchedulingServiceInfo}
-	 * are excluded here so they aren't shown twice - only additional/unrecognized services are kept, keyed by
-	 * their own name.
+	 * Populates {@link #cachedUdpListenerServiceInfo} by making a GET request to
+	 * {@link Constant#UDP_LISTENER_SERVICE_ENDPOINT}.
 	 */
-	private void populateOtherServicesInfo() {
+	private void populateUdpListenerServiceInfo() {
 		try {
-			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.SERVICES_ENDPOINT));
-			JsonNode listResponse = objectMapper.readTree(jsonResult);
-			Map<String, String> nextServicesInfo = new HashMap<>();
-			if (listResponse != null && listResponse.has(Constant.WINDOW_SERVICES) && listResponse.get(Constant.WINDOW_SERVICES).isArray()) {
-				Set<String> knownServiceNames = new HashSet<>();
-				knownServiceNames.add(cachedMonitoringServiceInfo.get(MonitoringServiceProperty.NAME.getName()));
-				knownServiceNames.add(cachedSchedulingServiceInfo.get(SchedulingServiceProperty.NAME.getName()));
-				for (JsonNode node : listResponse.path(Constant.WINDOW_SERVICES)) {
-					String serviceName = node.at("/Service").asText();
-					if (StringUtils.isNullOrEmpty(serviceName, true) || knownServiceNames.contains(serviceName)) {
-						continue;
-					}
-					String status = node.at("/Status").asText();
-					nextServicesInfo.put(serviceName, StringUtils.isNotNullOrEmpty(status) ? status : Constant.NOT_AVAILABLE);
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.UDP_LISTENER_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
+			synchronized (cachedUdpListenerServiceInfo) {
+				cachedUdpListenerServiceInfo.clear();
+				if (nextServiceInfo != null) {
+					cachedUdpListenerServiceInfo.putAll(nextServiceInfo);
 				}
 			}
-			synchronized (cachedOtherServicesInfo) {
-				cachedOtherServicesInfo.clear();
-				cachedOtherServicesInfo.putAll(nextServicesInfo);
-			}
 		} catch (Exception e) {
-			throw new RuntimeException("Unable to retrieve services info from response.", e);
+			throw new RuntimeException("Unable to retrieve UDP listener service info from response.", e);
 		}
 	}
 
@@ -1426,10 +1404,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * @param property the property to resolve and place into {@code stats}
 	 */
 	private void putGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property) {
+		putGroupedProperty(stats, cachedData, property, property.getGroup());
+	}
+
+	/**
+	 * Same as {@link #putGroupedProperty(Map, Map, FieldProperty)}, but with an explicit group prefix rather
+	 * than {@code property}'s own - for shared property definitions (like {@link ServiceProperty}) whose
+	 * group varies by caller rather than by property.
+	 */
+	private void putGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property, String groupName) {
 		if (property.isConditional() && !cachedData.containsKey(property.getName())) {
 			return;
 		}
-		String groupName = property.getGroup();
 		String key = StringUtils.isNullOrEmpty(groupName, true)
 				? property.getName()
 				: String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
