@@ -14,6 +14,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.Constant;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.MonitoringUtil;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.models.APIResponse;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
@@ -262,6 +263,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
 
 	/**
+	 * GVE command action IDs from {@link Constant#GVE_COMMANDS_ENDPOINT}, keyed by {@code ControllerType:Name}
+	 * (e.g. {@code Device:Power}, {@code Controller:Front Panel Lockout}) so the right {@code ActionId} can be
+	 * resolved for a given control without hardcoding IDs that could differ between GVE installations.
+	 */
+	private final Map<String, Integer> cachedActionIds = Collections.synchronizedMap(new HashMap<>());
+
+	/**
 	 * Cached "Aggregator &gt; GVE System" info from {@link Constant#SYSTEM_ENDPOINT}.
 	 */
 	private final Map<String, String> cachedSystemInfo = Collections.synchronizedMap(new HashMap<>());
@@ -431,6 +439,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					}
 					try {
 						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching GVE command actions");
+						}
+						populateActionList();
+					} catch (Exception e) {
+						logger.error("Error occurred during GVE command action retrieval", e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
 							logger.debug("Fetching system info");
 						}
 						populateSystemInfo();
@@ -550,6 +566,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
+		cachedActionIds.clear();
 		cachedSystemInfo.clear();
 		cachedMonitoringServiceInfo.clear();
 		cachedSchedulingServiceInfo.clear();
@@ -626,7 +643,107 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-		// Alert deletion is a separate story, to be implemented later.
+		String aggregatedDeviceId = controllableProperty.getDeviceId();
+		String property = controllableProperty.getProperty();
+		if (StringUtils.isNullOrEmpty(aggregatedDeviceId, true) || StringUtils.isNullOrEmpty(property, true)) {
+			return;
+		}
+		int value = parseControlValue(controllableProperty.getValue());
+
+		if (aggregatedDeviceId.startsWith(Constant.DEVICE_ID_PREFIX)) {
+			String rawDeviceId = aggregatedDeviceId.substring(Constant.DEVICE_ID_PREFIX.length());
+			if (Constant.POWER_PROPERTY.equals(property)) {
+				sendDeviceCommand(rawDeviceId, Constant.ACTION_NAME_POWER, value);
+			}
+			return;
+		}
+		if (!aggregatedDeviceId.startsWith(Constant.CONTROLLER_ID_PREFIX)) {
+			return;
+		}
+
+		String rawControllerId = aggregatedDeviceId.substring(Constant.CONTROLLER_ID_PREFIX.length());
+		if (Constant.POWER_PROPERTY.equals(property)) {
+			sendControllerCommand(rawControllerId, Constant.ACTION_NAME_POWER, value);
+		}
+	}
+
+	/**
+	 * Parses a raw controllable property value (typically {@code "0"}/{@code "1"} for a switch, but
+	 * tolerates e.g. {@code "1.0"}) into an {@code int}, defaulting to {@code 0} when missing/unparsable.
+	 *
+	 * @param rawValue the value from {@link ControllableProperty#getValue()}
+	 * @return the parsed value, or {@code 0} if it can't be parsed
+	 */
+	private static int parseControlValue(Object rawValue) {
+		if (rawValue == null) {
+			return 0;
+		}
+		try {
+			return (int) Double.parseDouble(String.valueOf(rawValue).trim());
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * Sends a {@link Constant#DEVICE_COMMAND_ENDPOINT} command for the given device, resolving its
+	 * {@code ActionId} via {@link #cachedActionIds} (keyed by {@link Constant#ACTION_CONTROLLER_TYPE_DEVICE}).
+	 *
+	 * @param deviceId the device's raw (unprefixed) ID
+	 * @param actionName the action's {@code Name} (e.g. {@link Constant#ACTION_NAME_POWER})
+	 * @param value the command value ({@code 0}/{@code 1} for on-off/lock-unlock actions)
+	 * @throws Exception if the action can't be resolved or the request itself fails
+	 */
+	private void sendDeviceCommand(String deviceId, String actionName, int value) throws Exception {
+		Integer actionId = cachedActionIds.get(actionKey(Constant.ACTION_CONTROLLER_TYPE_DEVICE, actionName));
+		if (actionId == null) {
+			throw new IllegalStateException("No GVE action found for Device action '" + actionName + "'");
+		}
+		Map<String, Object> body = new HashMap<>();
+		body.put("ActionId", actionId);
+		body.put("DeviceId", Integer.parseInt(deviceId));
+		body.put("Value", value);
+		String requestBody = objectMapper.writeValueAsString(body);
+		String response = this.withSessionRecovery(() -> this.doPost(Constant.DEVICE_COMMAND_ENDPOINT, requestBody));
+		validateCommandResponse(response);
+	}
+
+	/**
+	 * Sends a {@link Constant#CONTROLLER_COMMAND_ENDPOINT} command for the given controller, resolving its
+	 * {@code ActionId} via {@link #cachedActionIds} (keyed by {@link Constant#CONTROLLER}).
+	 *
+	 * @param controllerId the controller's raw (unprefixed) ID
+	 * @param actionName the action's {@code Name} (e.g. {@link Constant#ACTION_NAME_POWER})
+	 * @param value the command value ({@code 0}/{@code 1} for on-off/lock-unlock actions)
+	 * @throws Exception if the action can't be resolved or the request itself fails
+	 */
+	private void sendControllerCommand(String controllerId, String actionName, int value) throws Exception {
+		Integer actionId = cachedActionIds.get(actionKey(Constant.CONTROLLER, actionName));
+		if (actionId == null) {
+			throw new IllegalStateException("No GVE action found for Controller action '" + actionName + "'");
+		}
+		Map<String, Object> body = new HashMap<>();
+		body.put("ActionId", actionId);
+		body.put("ControllerId", Integer.parseInt(controllerId));
+		body.put("Value", value);
+		String requestBody = objectMapper.writeValueAsString(body);
+		String response = this.withSessionRecovery(() -> this.doPost(Constant.CONTROLLER_COMMAND_ENDPOINT, requestBody));
+		validateCommandResponse(response);
+	}
+
+	/**
+	 * Checks a GVE command response's {@code ResponseStatus} and throws if it carries a non-blank
+	 * {@code ErrorCode}.
+	 *
+	 * @param response the raw response body from a {@link Constant#DEVICE_COMMAND_ENDPOINT}/{@link Constant#CONTROLLER_COMMAND_ENDPOINT} call
+	 * @throws Exception if the response can't be parsed, or if it reports a failure
+	 */
+	private void validateCommandResponse(String response) throws Exception {
+		APIResponse apiResponse = objectMapper.readValue(response, APIResponse.class);
+		APIResponse.ResponseStatus status = apiResponse.getResponseStatus();
+		if (status != null && StringUtils.isNotNullOrEmpty(status.getErrorCode())) {
+			throw new RuntimeException("GVE command failed: " + status.getMessage());
+		}
 	}
 
 	@Override
@@ -763,6 +880,47 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve locations from response.", e);
 		}
+	}
+
+	/**
+	 * Populates {@link #cachedActionIds} by making a GET request to {@link Constant#GVE_COMMANDS_ENDPOINT},
+	 * resolving each action's {@code ActionId} by its own {@code ControllerType}/{@code Name} rather than
+	 * hardcoding IDs, since these could differ between GVE installations.
+	 */
+	private void populateActionList() {
+		try {
+			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.GVE_COMMANDS_ENDPOINT));
+			JsonNode listResponse = objectMapper.readTree(jsonResult);
+			Map<String, Integer> nextActionIds = new HashMap<>();
+			if (listResponse != null && listResponse.has(Constant.ACTIONS) && listResponse.get(Constant.ACTIONS).isArray()) {
+				for (JsonNode node : listResponse.path(Constant.ACTIONS)) {
+					String name = node.path("Name").asText(null);
+					String controllerType = node.path("ControllerType").asText(null);
+					int actionId = node.path("ActionId").asInt(-1);
+					if (StringUtils.isNullOrEmpty(name, true) || StringUtils.isNullOrEmpty(controllerType, true) || actionId < 0) {
+						continue;
+					}
+					nextActionIds.put(actionKey(controllerType, name), actionId);
+				}
+			}
+			synchronized (cachedActionIds) {
+				cachedActionIds.clear();
+				cachedActionIds.putAll(nextActionIds);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve GVE command actions from response.", e);
+		}
+	}
+
+	/**
+	 * Builds the {@link #cachedActionIds} lookup key for a given action.
+	 *
+	 * @param controllerType the action's {@code ControllerType} (e.g. {@link Constant#ACTION_CONTROLLER_TYPE_DEVICE}, {@link Constant#CONTROLLER})
+	 * @param actionName the action's {@code Name} (e.g. {@link Constant#ACTION_NAME_POWER})
+	 * @return the composite lookup key
+	 */
+	private static String actionKey(String controllerType, String actionName) {
+		return controllerType + ":" + actionName;
 	}
 
 	/**
@@ -1242,8 +1400,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				case MODEL_ID:
 					continue;
 				case POWER_STATUS:
+					putGroupedProperty(stats, cachedData, info);
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
-					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(info.getName(), isOn ? 1 : 0), isOn ? "1" : "0" );
+					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
 					break;
 				default:
 					putGroupedProperty(stats, cachedData, info);
@@ -1300,10 +1459,29 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			}
 			putGroupedProperty(stats, cachedData, property);
 		}
+
+		List<AdvancedControllableProperty> controls = new ArrayList<>();
+		if (!isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
+			boolean isActive = Constant.ACTIVE.equalsIgnoreCase(cachedData.get(ControllerProperty.STATUS.getName()));
+			Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+		}
+
 		aggregatedDevice.setProperties(stats);
-		aggregatedDevice.setControllableProperties(new ArrayList<>());
+		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Checks whether a controller's {@link ControllerProperty#TYPE} is {@value Constant#IPL_PRO_CONTROLLER_TYPE} -
+	 * per the {@link Constant#GVE_COMMANDS_ENDPOINT} documentation, GVE commands are only valid for IP
+	 * Link controllers, not IP Link Pro.
+	 *
+	 * @param controllerType the controller's raw {@link ControllerProperty#TYPE} value
+	 * @return {@code true} if the type is an IP Link Pro controller
+	 */
+	private static boolean isProController(String controllerType) {
+		return Constant.IPL_PRO_CONTROLLER_TYPE.equalsIgnoreCase(controllerType);
 	}
 
 	/**
