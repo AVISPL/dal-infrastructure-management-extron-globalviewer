@@ -23,6 +23,9 @@ public final class Constant {
 	public static final String ONLINE = "Online";
 	public static final String OFFLINE = "Offline";
 	public static final String ON = "On";
+	public static final String OFF = "Off";
+	public static final String ACTIVE = "Active";
+	public static final String INACTIVE = "Inactive";
 	public static final String CONTROLLER_MANUFACTURER = "Extron";
 
 	public static final String DEVICE_ID_PREFIX = "device_";
@@ -36,6 +39,9 @@ public final class Constant {
 	public static final String MODEL_ENDPOINT = "/devices/model/%s";
 	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
 	public static final String CONTROLLERS_ENDPOINT = "/controllers";
+	public static final String GVE_COMMANDS_ENDPOINT = "/gvecommands";
+	public static final String DEVICE_COMMAND_ENDPOINT = "/gvecommands/device";
+	public static final String CONTROLLER_COMMAND_ENDPOINT = "/gvecommands/controller";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -56,6 +62,14 @@ public final class Constant {
 	public static final String MANUFACTURER = "Manufacturer";
 	public static final String CONTROLLERS = "Controllers";
 	public static final String CONTROLLER = "Controller";
+	public static final String ACTIONS = "Actions";
+
+	//	GVE command actions
+	public static final String ACTION_CONTROLLER_TYPE_DEVICE = "Device";
+	public static final String ACTION_NAME_POWER = "Power";
+	/** Controllable property name for both devices' and controllers' power switch. */
+	public static final String POWER_PROPERTY = "Power";
+	public static final String IPL_PRO_CONTROLLER_TYPE = "IPL Pro";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
