@@ -23,6 +23,8 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.manufacturer.ManufacturerProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.model.ModelProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.room.RoomProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.service.ServiceProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.system.SystemProperty;
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
 
@@ -268,6 +270,26 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Integer> cachedActionIds = Collections.synchronizedMap(new HashMap<>());
 
 	/**
+	 * Cached "Aggregator &gt; GVE System" info from {@link Constant#SYSTEM_ENDPOINT}.
+	 */
+	private final Map<String, String> cachedSystemInfo = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached "Aggregator &gt; GVE Monitoring Service" info from {@link Constant#MONITORING_SERVICE_ENDPOINT}.
+	 */
+	private final Map<String, String> cachedMonitoringServiceInfo = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached "Aggregator &gt; GVE Scheduling Service" info from {@link Constant#SCHEDULING_SERVICE_ENDPOINT}.
+	 */
+	private final Map<String, String> cachedSchedulingServiceInfo = Collections.synchronizedMap(new HashMap<>());
+
+	/**
+	 * Cached "Aggregator &gt; GVE UDP Listener Service" info from {@link Constant#UDP_LISTENER_SERVICE_ENDPOINT}.
+	 */
+	private final Map<String, String> cachedUdpListenerServiceInfo = Collections.synchronizedMap(new HashMap<>());
+
+	/**
 	 * Cached GVE Model data, keyed by {@link ModelProperty#ID}.
 	 */
 	private final Map<String, Map<String, String>> cachedModels = Collections.synchronizedMap(new HashMap<>());
@@ -425,6 +447,38 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					}
 					try {
 						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching system info");
+						}
+						populateSystemInfo();
+					} catch (Exception e) {
+						logger.error("Error occurred during system info retrieval", e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching monitoring service info");
+						}
+						populateMonitoringServiceInfo();
+					} catch (Exception e) {
+						logger.error("Error occurred during monitoring service info retrieval", e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching scheduling service info");
+						}
+						populateSchedulingServiceInfo();
+					} catch (Exception e) {
+						logger.error("Error occurred during scheduling service info retrieval", e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Fetching UDP listener service info");
+						}
+						populateUdpListenerServiceInfo();
+					} catch (Exception e) {
+						logger.error("Error occurred during UDP listener service info retrieval", e);
+					}
+					try {
+						if (logger.isDebugEnabled()) {
 							logger.debug("Fetching controllers list");
 						}
 						populateControllerList();
@@ -513,6 +567,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedRooms.clear();
 		cachedLocations.clear();
 		cachedActionIds.clear();
+		cachedSystemInfo.clear();
+		cachedMonitoringServiceInfo.clear();
+		cachedSchedulingServiceInfo.clear();
+		cachedUdpListenerServiceInfo.clear();
 		cachedControllers.clear();
 		cachedAlertsByDevice.clear();
 		cachedModels.clear();
@@ -533,6 +591,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			));
 			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
 			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
+			for (SystemProperty property : SystemProperty.values()) {
+				putGroupedProperty(statistics, cachedSystemInfo, property);
+			}
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedMonitoringServiceInfo, property, Constant.MONITORING_SERVICE_GROUP);
+			}
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedSchedulingServiceInfo, property, Constant.SCHEDULING_SERVICE_GROUP);
+			}
+			for (ServiceProperty property : ServiceProperty.values()) {
+				putGroupedProperty(statistics, cachedUdpListenerServiceInfo, property, Constant.UDP_LISTENER_SERVICE_GROUP);
+			}
 
 			Map<String, String> dynamicStatistics = new HashMap<>();
 			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
@@ -871,6 +941,88 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private static String actionKey(String controllerType, String actionName) {
 		return controllerType + ":" + actionName;
+	}
+
+	/**
+	 * Populates {@link #cachedSystemInfo} by making a GET request to {@link Constant#SYSTEM_ENDPOINT}. Unlike
+	 * most other endpoints, the response is a flat object with no wrapper key, so it's parsed directly rather
+	 * than through {@link #fetchSingleEntity}.
+	 */
+	private void populateSystemInfo() {
+		try {
+			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.SYSTEM_ENDPOINT));
+			JsonNode response = objectMapper.readTree(jsonResult);
+			Map<String, String> nextSystemInfo = new HashMap<>();
+			if (response != null) {
+				for (SystemProperty property : SystemProperty.values()) {
+					String value = extractValue(response, property);
+					if (value == null) {
+						continue;
+					}
+					nextSystemInfo.put(property.getName(), value);
+				}
+			}
+			synchronized (cachedSystemInfo) {
+				cachedSystemInfo.clear();
+				cachedSystemInfo.putAll(nextSystemInfo);
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve system info from response.", e);
+		}
+	}
+
+	/**
+	 * Populates {@link #cachedMonitoringServiceInfo} by making a GET request to
+	 * {@link Constant#MONITORING_SERVICE_ENDPOINT}.
+	 */
+	private void populateMonitoringServiceInfo() {
+		try {
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.MONITORING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
+			synchronized (cachedMonitoringServiceInfo) {
+				cachedMonitoringServiceInfo.clear();
+				if (nextServiceInfo != null) {
+					cachedMonitoringServiceInfo.putAll(nextServiceInfo);
+				}
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve monitoring service info from response.", e);
+		}
+	}
+
+	/**
+	 * Populates {@link #cachedSchedulingServiceInfo} by making a GET request to
+	 * {@link Constant#SCHEDULING_SERVICE_ENDPOINT}.
+	 */
+	private void populateSchedulingServiceInfo() {
+		try {
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.SCHEDULING_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
+			synchronized (cachedSchedulingServiceInfo) {
+				cachedSchedulingServiceInfo.clear();
+				if (nextServiceInfo != null) {
+					cachedSchedulingServiceInfo.putAll(nextServiceInfo);
+				}
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve scheduling service info from response.", e);
+		}
+	}
+
+	/**
+	 * Populates {@link #cachedUdpListenerServiceInfo} by making a GET request to
+	 * {@link Constant#UDP_LISTENER_SERVICE_ENDPOINT}.
+	 */
+	private void populateUdpListenerServiceInfo() {
+		try {
+			Map<String, String> nextServiceInfo = fetchSingleEntity(Constant.UDP_LISTENER_SERVICE_ENDPOINT, Constant.WINDOWS_SERVICE, ServiceProperty.values());
+			synchronized (cachedUdpListenerServiceInfo) {
+				cachedUdpListenerServiceInfo.clear();
+				if (nextServiceInfo != null) {
+					cachedUdpListenerServiceInfo.putAll(nextServiceInfo);
+				}
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Unable to retrieve UDP listener service info from response.", e);
+		}
 	}
 
 	/**
@@ -1450,10 +1602,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * @param property the property to resolve and place into {@code stats}
 	 */
 	private void putGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property) {
+		putGroupedProperty(stats, cachedData, property, property.getGroup());
+	}
+
+	/**
+	 * Same as {@link #putGroupedProperty(Map, Map, FieldProperty)}, but with an explicit group prefix rather
+	 * than {@code property}'s own - for shared property definitions (like {@link ServiceProperty}) whose
+	 * group varies by caller rather than by property.
+	 */
+	private void putGroupedProperty(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property, String groupName) {
 		if (property.isConditional() && !cachedData.containsKey(property.getName())) {
 			return;
 		}
-		String groupName = property.getGroup();
 		String key = StringUtils.isNullOrEmpty(groupName, true)
 				? property.getName()
 				: String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
