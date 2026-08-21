@@ -62,6 +62,12 @@ public final class Constant {
 	public static final String ALERT_GROUP = "Alert";
 	public static final String ACTIVE_ALERTS_GROUP = "ActiveAlerts";
 
+	//	displayPropertyGroups
+	public static final String DISPLAY_PROPERTY_GROUPS_GENERAL = "General";
+	public static final String DISPLAY_PROPERTY_GROUPS_ALL = "All";
+	public static final String SERVICES_DISPLAY_GROUP = "GVEService";
+	public static final String ALERTS_DISPLAY_GROUP = "Alerts";
+
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
 	public static final String ROOMS = "Rooms";
