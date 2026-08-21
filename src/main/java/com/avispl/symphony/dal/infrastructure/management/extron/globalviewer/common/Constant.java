@@ -23,6 +23,9 @@ public final class Constant {
 	public static final String ONLINE = "Online";
 	public static final String OFFLINE = "Offline";
 	public static final String ON = "On";
+	public static final String OFF = "Off";
+	public static final String ACTIVE = "Active";
+	public static final String INACTIVE = "Inactive";
 	public static final String CONTROLLER_MANUFACTURER = "Extron";
 
 	public static final String DEVICE_ID_PREFIX = "device_";
@@ -36,12 +39,24 @@ public final class Constant {
 	public static final String MODEL_ENDPOINT = "/devices/model/%s";
 	public static final String MANUFACTURER_ENDPOINT = "/devices/manufacturer/%s";
 	public static final String CONTROLLERS_ENDPOINT = "/controllers";
+	public static final String GVE_COMMANDS_ENDPOINT = "/gvecommands";
+	public static final String DEVICE_COMMAND_ENDPOINT = "/gvecommands/device";
+	public static final String CONTROLLER_COMMAND_ENDPOINT = "/gvecommands/controller";
+
+	public static final String SYSTEM_ENDPOINT = "/system";
+	public static final String MONITORING_SERVICE_ENDPOINT = "/services/monitoring";
+	public static final String SCHEDULING_SERVICE_ENDPOINT = "/services/scheduling";
+	public static final String UDP_LISTENER_SERVICE_ENDPOINT = "/services/udplistener";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
 	public static final String LIVE_STATUS_GROUP = "LiveStatus";
 	public static final String GVE_ROOM_GROUP = "GVERoom";
 	public static final String GVE_LOCATION_GROUP = "GVELocation";
+	public static final String GVE_SYSTEM_GROUP = "GVESystem";
+	public static final String MONITORING_SERVICE_GROUP = "GVEService_Monitoring";
+	public static final String SCHEDULING_SERVICE_GROUP = "GVEService_Scheduling";
+	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEService_UdpListener";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
@@ -56,6 +71,16 @@ public final class Constant {
 	public static final String MANUFACTURER = "Manufacturer";
 	public static final String CONTROLLERS = "Controllers";
 	public static final String CONTROLLER = "Controller";
+	public static final String ACTIONS = "Actions";
+
+	//	GVE command actions
+	public static final String ACTION_CONTROLLER_TYPE_DEVICE = "Device";
+	public static final String ACTION_NAME_POWER = "Power";
+	public static final String POWER_PROPERTY = "Power";
+
+	public static final String IPL_PRO_CONTROLLER_TYPE = "IPL Pro";
+	
+	public static final String WINDOWS_SERVICE = "WindowsService";
 
 	//	Dynamic statistics
 	public static final String MONITORED_DEVICES_TOTAL = "MonitoredDevicesTotal";
