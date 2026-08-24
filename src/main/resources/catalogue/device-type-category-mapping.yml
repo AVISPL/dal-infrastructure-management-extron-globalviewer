@@ -1,0 +1,159 @@
+# Maps a raw Extron `DeviceType` value (as returned by GVE's /DeviceType field) onto the Symphony
+# type/category taxonomy. Any DeviceType not listed here falls back to using the raw value itself as
+# the category (see GlobalViewerEnterpriseCommunicator#resolveDeviceCategory).
+Audio_Processor:
+  type: AV Devices
+  category: Audio DSP
+Controller:
+  type: AV Devices
+  category: AV Controllers
+IP_Link:
+  type: AV Devices
+  category: AV Controllers
+MediaLink_Controller:
+  type: AV Devices
+  category: AV Controllers
+System_5IP:
+  type: AV Devices
+  category: AV Controllers
+Camera:
+  type: AV Devices
+  category: Camera
+Document_Camera:
+  type: AV Devices
+  category: Camera
+Scan_Converter:
+  type: AV Devices
+  category: Converters
+Keyboard/Mouse_Combo:
+  type: Computer
+  category: Desktop
+Building_Management_Systems:
+  type: Infrastructure
+  category: Gateway
+Other:
+  type: AV Devices
+  category: Generic
+Computer_Video_Interface:
+  type: AV Devices
+  category: Input Source
+Interactive_Whiteboard:
+  type: AV Devices
+  category: IWB
+Lighting_Control:
+  type: AV Devices
+  category: Lights
+Signal_Processor:
+  type: AV Devices
+  category: Media Processor
+SMP:
+  type: AV Devices
+  category: Media Processor
+Video_Processor:
+  type: AV Devices
+  category: Media Processor
+Display:
+  type: AV Devices
+  category: Monitors
+AM/FM_Tuner:
+  type: AV Devices
+  category: Players
+Blu-ray:
+  type: AV Devices
+  category: Players
+Cassette:
+  type: AV Devices
+  category: Players
+CD_Player:
+  type: AV Devices
+  category: Players
+DAT:
+  type: AV Devices
+  category: Players
+DVD:
+  type: AV Devices
+  category: Players
+DVD/VCR:
+  type: AV Devices
+  category: Players
+Media_Player:
+  type: AV Devices
+  category: Players
+Mini_Disc:
+  type: AV Devices
+  category: Players
+MPEG_Player:
+  type: AV Devices
+  category: Players
+Streaming_Media:
+  type: AV Devices
+  category: Players
+TV_Tuner:
+  type: AV Devices
+  category: Players
+VCR:
+  type: AV Devices
+  category: Players
+Video_Disc_Player:
+  type: AV Devices
+  category: Players
+Web_TV:
+  type: AV Devices
+  category: Players
+Slide_Projector:
+  type: AV Devices
+  category: Projectors
+Video_Projector:
+  type: AV Devices
+  category: Projectors
+Cable_Box:
+  type: AV Devices
+  category: Receivers
+Receiver:
+  type: AV Devices
+  category: Receivers
+Satellite_Receiver:
+  type: AV Devices
+  category: Receivers
+Digital_Video_Recorder:
+  type: Infrastructure
+  category: Recording
+Network_Button_Panel:
+  type: AV Devices
+  category: Room Controls
+Scaler:
+  type: AV Devices
+  category: Scaler
+eBUS:
+  type: AV Devices
+  category: Sensor
+Music_Server:
+  type: Computer
+  category: Server
+Video_Conference:
+  type: Codecs
+  category: Single Codecs
+KVM_Switch:
+  type: AV Devices
+  category: Switchers
+Matrix_Switcher:
+  type: AV Devices
+  category: Switchers
+Switcher:
+  type: AV Devices
+  category: Switchers
+Touch_Tablet:
+  type: Computer
+  category: Tablet
+Collaboration_Systems:
+  type: Codecs
+  category: Telepresence
+TLS:
+  type: AV Devices
+  category: Touch Screens
+Touch_Display:
+  type: AV Devices
+  category: Touch Screens
+ShareLink:
+  type: AV Devices
+  category: Wireless Presentation
