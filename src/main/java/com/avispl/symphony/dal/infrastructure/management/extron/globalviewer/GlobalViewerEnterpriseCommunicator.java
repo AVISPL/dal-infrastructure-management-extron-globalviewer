@@ -16,6 +16,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.models.APIResponse;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.DeviceTypeCategory;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.controller.ControllerProperty;
@@ -28,8 +29,10 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.io.IOException;
@@ -413,6 +416,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	/**
+	 * Raw Extron {@code DeviceType} -&gt; Symphony type/category, loaded once from
+	 * {@code device-type-category-mapping.yml}. A {@code DeviceType} not present here (see
+	 * {@code buildAggregatedDevice}) falls back to using the raw value itself as {@code category}, and leaves
+	 * {@code type} unset (its own default) - this is also what happens for every {@code DeviceType} if the
+	 * mapping file fails to load.
+	 */
+	private Map<String, DeviceTypeCategory> deviceTypeCategoryMapping = Collections.emptyMap();
+
+	/**
 	 * Update the status of the device.
 	 * The device is considered as paused if did not receive any retrieveMultipleStatistics()
 	 * calls during {@link GlobalViewerEnterpriseCommunicator}
@@ -604,6 +616,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		executorService = Executors.newFixedThreadPool(1);
 		executorService.submit(deviceDataLoader = new GlobalViewerEnterpriseDataLoader());
 		this.loadVersionProperties(this.versionProperties);
+		this.deviceTypeCategoryMapping = this.loadDeviceTypeCategoryMapping();
 	}
 
 	@Override
@@ -617,6 +630,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			executorService = null;
 		}
 		this.versionProperties.clear();
+		this.deviceTypeCategoryMapping = Collections.emptyMap();
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
@@ -851,6 +865,24 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
+		}
+	}
+
+	/**
+	 * Loads {@link #deviceTypeCategoryMapping} from {@code device-type-category-mapping.yml}. On failure, logs
+	 * the error and returns an empty map, so every {@code DeviceType} falls back to using its raw value as the
+	 * category, and {@code type} is left unset, instead of the adapter failing to start.
+	 *
+	 * @return the parsed mapping, or an empty map if the resource couldn't be read/parsed
+	 */
+	private Map<String, DeviceTypeCategory> loadDeviceTypeCategoryMapping() {
+		try {
+			YAMLMapper yamlMapper = new YAMLMapper();
+			return yamlMapper.readValue(this.getClass().getResourceAsStream("/catalogue/device-type-category-mapping.yml"),
+					new TypeReference<Map<String, DeviceTypeCategory>>() {});
+		} catch (IOException e) {
+			this.logger.error("Failed to load device-type-category-mapping.yml, DeviceType will be used as category as-is.", e);
+			return Collections.emptyMap();
 		}
 	}
 
@@ -1469,7 +1501,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		AggregatedDevice aggregatedDevice = new AggregatedDevice();
 		aggregatedDevice.setDeviceId(Constant.DEVICE_ID_PREFIX + deviceId);
 		aggregatedDevice.setDeviceName(cachedData.get(AggregatedGeneralProperty.DEVICE_NAME.getName()));
-		aggregatedDevice.setCategory(cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName()));
+		String rawDeviceType = cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName());
+		DeviceTypeCategory typeCategory = deviceTypeCategoryMapping.get(rawDeviceType);
+		aggregatedDevice.setCategory(typeCategory == null ? rawDeviceType : typeCategory.getCategory());
+		if (typeCategory != null) {
+			aggregatedDevice.setType(typeCategory.getType());
+		}
 		String connection = cachedData.get(AggregatedGeneralProperty.CONNECTION.getName());
 		aggregatedDevice.setDeviceOnline(Constant.ONLINE.equalsIgnoreCase(connection));
 
