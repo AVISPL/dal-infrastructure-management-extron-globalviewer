@@ -1504,8 +1504,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		String rawDeviceType = cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName());
 		DeviceTypeCategory typeCategory = deviceTypeCategoryMapping.get(rawDeviceType);
 		aggregatedDevice.setCategory(typeCategory == null ? rawDeviceType : typeCategory.getCategory());
-		if (typeCategory != null)
+		if (typeCategory != null) {
 			aggregatedDevice.setType(typeCategory.getType());
+		}
 		String connection = cachedData.get(AggregatedGeneralProperty.CONNECTION.getName());
 		aggregatedDevice.setDeviceOnline(Constant.ONLINE.equalsIgnoreCase(connection));
 
