@@ -16,6 +16,7 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.com
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.common.utils.Util;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.models.APIResponse;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.AggregatedGeneralProperty;
+import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregated.DeviceTypeCategory;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.aggregator.General;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.alert.AlertProperty;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.types.controller.ControllerProperty;
@@ -28,8 +29,10 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.typ
 import com.avispl.symphony.dal.util.StringUtils;
 import com.avispl.symphony.dal.util.ControllablePropertyFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.io.IOException;
@@ -149,6 +152,48 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	public void setLocationFilter(String locationFilter) {
 		this.locationFilter = Arrays.stream(locationFilter.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+	}
+
+	/**
+	 * Property groups to display, matched case-sensitively. Defaults to {@link Constant#GENERAL_GROUP}
+	 * (only flat/ungrouped properties, no optional groups at all). {@link Constant#ALL_GROUPS}
+	 * enables every optional group; otherwise, only the exact group names present are enabled - one or more of
+	 * {@link Constant#GVE_ROOM_GROUP}, {@link Constant#GVE_LOCATION_GROUP}, {@link Constant#GVE_SYSTEM_GROUP},
+	 * {@link Constant#SERVICES_DISPLAY_GROUP}, {@link Constant#ALERTS_DISPLAY_GROUP}, {@link Constant#LIVE_STATUS_GROUP},
+	 * {@link Constant#CONTROLLER_NETWORK_GROUP}, {@link Constant#CONTROLLER_SYSTEM_GROUP}. Gates both the extra API
+	 * calls those groups need and whether their properties are added to the adapter/device/controller statistics.
+	 */
+	private Set<String> displayPropertyGroups = new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP));
+
+	/**
+	 * Retrieves {@link #displayPropertyGroups}.
+	 *
+	 * @return value of {@link #displayPropertyGroups}
+	 */
+	public String getDisplayPropertyGroups() {
+		return String.join(",", displayPropertyGroups);
+	}
+
+	/**
+	 * Sets {@link #displayPropertyGroups} value; falls back to {@link Constant#GENERAL_GROUP}
+	 * when blank/unparsable.
+	 *
+	 * @param displayPropertyGroups new value of {@link #displayPropertyGroups}, comma-separated
+	 */
+	public void setDisplayPropertyGroups(String displayPropertyGroups) {
+		Set<String> parsed = StringUtils.isNullOrEmpty(displayPropertyGroups, true) ? Collections.emptySet()
+				: Arrays.stream(displayPropertyGroups.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+		this.displayPropertyGroups = parsed.isEmpty() ? new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP)) : parsed;
+	}
+
+	/**
+	 * Checks whether {@code group} should be displayed, per {@link #displayPropertyGroups}.
+	 *
+	 * @param group the group name to check, e.g. {@link Constant#GVE_ROOM_GROUP}
+	 * @return {@code true} if {@code group} should be displayed
+	 */
+	private boolean isGroupDisplayed(String group) {
+		return displayPropertyGroups.contains(Constant.ALL_GROUPS) || displayPropertyGroups.contains(group);
 	}
 
 	/**
@@ -371,6 +416,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	/**
+	 * Raw Extron {@code DeviceType} -&gt; Symphony type/category, loaded once from
+	 * {@code device-type-category-mapping.yml}. A {@code DeviceType} not present here (see
+	 * {@code buildAggregatedDevice}) falls back to using the raw value itself as {@code category}, and leaves
+	 * {@code type} unset (its own default) - this is also what happens for every {@code DeviceType} if the
+	 * mapping file fails to load.
+	 */
+	private Map<String, DeviceTypeCategory> deviceTypeCategoryMapping = Collections.emptyMap();
+
+	/**
 	 * Update the status of the device.
 	 * The device is considered as paused if did not receive any retrieveMultipleStatistics()
 	 * calls during {@link GlobalViewerEnterpriseCommunicator}
@@ -422,18 +476,22 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					}
 					long startCycle = System.currentTimeMillis();
 					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching rooms list");
+						if (isGroupDisplayed(Constant.GVE_ROOM_GROUP)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching rooms list");
+							}
+							populateRoomList();
 						}
-						populateRoomList();
 					} catch (Exception e) {
 						logger.error("Error occurred during room list retrieval", e);
 					}
 					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching locations list");
+						if (isGroupDisplayed(Constant.GVE_LOCATION_GROUP)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching locations list");
+							}
+							populateLocationList();
 						}
-						populateLocationList();
 					} catch (Exception e) {
 						logger.error("Error occurred during location list retrieval", e);
 					}
@@ -446,37 +504,43 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						logger.error("Error occurred during GVE command action retrieval", e);
 					}
 					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching system info");
+						if (isGroupDisplayed(Constant.GVE_SYSTEM_GROUP)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching system info");
+							}
+							populateSystemInfo();
 						}
-						populateSystemInfo();
 					} catch (Exception e) {
 						logger.error("Error occurred during system info retrieval", e);
 					}
-					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching monitoring service info");
+
+					if (isGroupDisplayed(Constant.SERVICES_DISPLAY_GROUP)) {
+						try {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching monitoring service info");
+							}
+							populateMonitoringServiceInfo();
+						} catch (Exception e) {
+							logger.error("Error occurred during monitoring service info retrieval", e);
 						}
-						populateMonitoringServiceInfo();
-					} catch (Exception e) {
-						logger.error("Error occurred during monitoring service info retrieval", e);
-					}
-					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching scheduling service info");
+						try {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching scheduling service info");
+							}
+							populateSchedulingServiceInfo();
+						} catch (Exception e) {
+							logger.error("Error occurred during scheduling service info retrieval", e);
 						}
-						populateSchedulingServiceInfo();
-					} catch (Exception e) {
-						logger.error("Error occurred during scheduling service info retrieval", e);
-					}
-					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching UDP listener service info");
+						try {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching UDP listener service info");
+							}
+							populateUdpListenerServiceInfo();
+						} catch (Exception e) {
+							logger.error("Error occurred during UDP listener service info retrieval", e);
 						}
-						populateUdpListenerServiceInfo();
-					} catch (Exception e) {
-						logger.error("Error occurred during UDP listener service info retrieval", e);
 					}
+
 					try {
 						if (logger.isDebugEnabled()) {
 							logger.debug("Fetching controllers list");
@@ -494,10 +558,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 						logger.error("Error occurred during device list retrieval", e);
 					}
 					try {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Fetching alerts list");
+						if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Fetching alerts list");
+							}
+							populateAlertList();
 						}
-						populateAlertList();
 					} catch (Exception e) {
 						logger.error("Error occurred during alert list retrieval", e);
 					}
@@ -550,6 +616,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		executorService = Executors.newFixedThreadPool(1);
 		executorService.submit(deviceDataLoader = new GlobalViewerEnterpriseDataLoader());
 		this.loadVersionProperties(this.versionProperties);
+		this.deviceTypeCategoryMapping = this.loadDeviceTypeCategoryMapping();
 	}
 
 	@Override
@@ -563,6 +630,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			executorService = null;
 		}
 		this.versionProperties.clear();
+		this.deviceTypeCategoryMapping = Collections.emptyMap();
 		cachedMonitoringDevice.clear();
 		cachedRooms.clear();
 		cachedLocations.clear();
@@ -589,19 +657,27 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
-			putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
-			putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
-			for (SystemProperty property : SystemProperty.values()) {
-				putGroupedProperty(statistics, cachedSystemInfo, property);
+			if (isGroupDisplayed(Constant.GVE_ROOM_GROUP)) {
+				putIndexedGroupedProperties(statistics, cachedRooms, RoomProperty.values());
 			}
-			for (ServiceProperty property : ServiceProperty.values()) {
-				putGroupedProperty(statistics, cachedMonitoringServiceInfo, property, Constant.MONITORING_SERVICE_GROUP);
+			if (isGroupDisplayed(Constant.GVE_LOCATION_GROUP)) {
+				putIndexedGroupedProperties(statistics, cachedLocations, LocationProperty.values());
 			}
-			for (ServiceProperty property : ServiceProperty.values()) {
-				putGroupedProperty(statistics, cachedSchedulingServiceInfo, property, Constant.SCHEDULING_SERVICE_GROUP);
+			if (isGroupDisplayed(Constant.GVE_SYSTEM_GROUP)) {
+				for (SystemProperty property : SystemProperty.values()) {
+					putGroupedProperty(statistics, cachedSystemInfo, property);
+				}
 			}
-			for (ServiceProperty property : ServiceProperty.values()) {
-				putGroupedProperty(statistics, cachedUdpListenerServiceInfo, property, Constant.UDP_LISTENER_SERVICE_GROUP);
+			if (isGroupDisplayed(Constant.SERVICES_DISPLAY_GROUP)) {
+				for (ServiceProperty property : ServiceProperty.values()) {
+					putGroupedProperty(statistics, cachedMonitoringServiceInfo, property, Constant.MONITORING_SERVICE_GROUP);
+				}
+				for (ServiceProperty property : ServiceProperty.values()) {
+					putGroupedProperty(statistics, cachedSchedulingServiceInfo, property, Constant.SCHEDULING_SERVICE_GROUP);
+				}
+				for (ServiceProperty property : ServiceProperty.values()) {
+					putGroupedProperty(statistics, cachedUdpListenerServiceInfo, property, Constant.UDP_LISTENER_SERVICE_GROUP);
+				}
 			}
 
 			Map<String, String> dynamicStatistics = new HashMap<>();
@@ -789,6 +865,24 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
+		}
+	}
+
+	/**
+	 * Loads {@link #deviceTypeCategoryMapping} from {@code device-type-category-mapping.yml}. On failure, logs
+	 * the error and returns an empty map, so every {@code DeviceType} falls back to using its raw value as the
+	 * category, and {@code type} is left unset, instead of the adapter failing to start.
+	 *
+	 * @return the parsed mapping, or an empty map if the resource couldn't be read/parsed
+	 */
+	private Map<String, DeviceTypeCategory> loadDeviceTypeCategoryMapping() {
+		try {
+			YAMLMapper yamlMapper = new YAMLMapper();
+			return yamlMapper.readValue(this.getClass().getResourceAsStream("/catalogue/device-type-category-mapping.yml"),
+					new TypeReference<Map<String, DeviceTypeCategory>>() {});
+		} catch (IOException e) {
+			this.logger.error("Failed to load device-type-category-mapping.yml, DeviceType will be used as category as-is.", e);
+			return Collections.emptyMap();
 		}
 	}
 
@@ -1407,7 +1501,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		AggregatedDevice aggregatedDevice = new AggregatedDevice();
 		aggregatedDevice.setDeviceId(Constant.DEVICE_ID_PREFIX + deviceId);
 		aggregatedDevice.setDeviceName(cachedData.get(AggregatedGeneralProperty.DEVICE_NAME.getName()));
-		aggregatedDevice.setCategory(cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName()));
+		String rawDeviceType = cachedData.get(AggregatedGeneralProperty.DEVICE_TYPE.getName());
+		DeviceTypeCategory typeCategory = deviceTypeCategoryMapping.get(rawDeviceType);
+		aggregatedDevice.setCategory(typeCategory == null ? rawDeviceType : typeCategory.getCategory());
+		if (typeCategory != null) {
+			aggregatedDevice.setType(typeCategory.getType());
+		}
 		String connection = cachedData.get(AggregatedGeneralProperty.CONNECTION.getName());
 		aggregatedDevice.setDeviceOnline(Constant.ONLINE.equalsIgnoreCase(connection));
 
@@ -1420,24 +1519,28 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				case MODEL_ID:
 					continue;
 				case POWER_STATUS:
-					putGroupedProperty(stats, cachedData, info);
+					putGroupedPropertyIfDisplayed(stats, cachedData, info);
 					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
 					break;
 				default:
-					putGroupedProperty(stats, cachedData, info);
+					putGroupedPropertyIfDisplayed(stats, cachedData, info);
 					break;
 			}
 		}
-		// Lamp/average-lamp utilization entries are already fully-qualified stats keys (see
-		// #putDynamicLampUtilization) - no other cached property name contains "#", so this picks up
-		// exactly those and nothing else.
-		for (Map.Entry<String, String> entry : cachedData.entrySet()) {
-			if (entry.getKey().contains("#")) {
-				stats.put(entry.getKey(), entry.getValue());
+		// Lamp/average-lamp utilization entries are already fully-qualified LiveStatus#... stats keys (see
+		// #putDynamicLampUtilization) - no other cached property name contains "#", so this picks up exactly
+		// those and nothing else; gated the same as the rest of the LiveStatus group.
+		if (isGroupDisplayed(Constant.LIVE_STATUS_GROUP)) {
+			for (Map.Entry<String, String> entry : cachedData.entrySet()) {
+				if (entry.getKey().contains("#")) {
+					stats.put(entry.getKey(), entry.getValue());
+				}
 			}
 		}
-		putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId));
+		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
+			putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId));
+		}
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
@@ -1477,7 +1580,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					|| property == ControllerProperty.MODEL_NAME || property == ControllerProperty.ONLINE) {
 				continue;
 			}
-			putGroupedProperty(stats, cachedData, property);
+			putGroupedPropertyIfDisplayed(stats, cachedData, property);
 		}
 
 		List<AdvancedControllableProperty> controls = new ArrayList<>();
@@ -1618,5 +1721,23 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				? property.getName()
 				: String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
 		stats.put(key, cachedData.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+	}
+
+	/**
+	 * Same as {@link #putGroupedProperty(Map, Map, FieldProperty)}, but skips the property entirely (rather
+	 * than adding it) when it belongs to a non-flat group that {@link #isGroupDisplayed} says shouldn't be
+	 * shown - for enums like {@link AggregatedGeneralProperty}/{@link ControllerProperty} that mix flat/
+	 * always-shown properties with optional-group ones in the same {@code values()} loop.
+	 *
+	 * @param stats the destination monitoring properties map
+	 * @param cachedData the cached property name/value pairs for the device/controller
+	 * @param property the property to resolve and place into {@code stats}
+	 */
+	private void putGroupedPropertyIfDisplayed(Map<String, String> stats, Map<String, String> cachedData, FieldProperty property) {
+		String group = property.getGroup();
+		if (StringUtils.isNotNullOrEmpty(group) && !isGroupDisplayed(group)) {
+			return;
+		}
+		putGroupedProperty(stats, cachedData, property);
 	}
 }
