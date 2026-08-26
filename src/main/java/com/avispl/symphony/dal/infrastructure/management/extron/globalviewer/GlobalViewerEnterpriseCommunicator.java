@@ -882,13 +882,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/** Deletes every device alert on the GVE server (not scoped to any filter). */
 	private void deleteDeviceAlerts() throws Exception {
-		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_DEVICES_ENDPOINT, null));
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_DEVICES_ENDPOINT, null, String.class));
 		validateCommandResponse(response);
 	}
 
 	/** Deletes every controller alert on the GVE server (not scoped to any filter). */
 	private void deleteControllerAlerts() throws Exception {
-		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_CONTROLLERS_ENDPOINT, null));
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_CONTROLLERS_ENDPOINT, null, String.class));
 		validateCommandResponse(response);
 	}
 
