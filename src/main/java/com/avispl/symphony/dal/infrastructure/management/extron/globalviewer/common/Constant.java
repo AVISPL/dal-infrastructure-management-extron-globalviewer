@@ -47,6 +47,8 @@ public final class Constant {
 	public static final String MONITORING_SERVICE_ENDPOINT = "/services/monitoring";
 	public static final String SCHEDULING_SERVICE_ENDPOINT = "/services/scheduling";
 	public static final String UDP_LISTENER_SERVICE_ENDPOINT = "/services/udplistener";
+	public static final String ALERTS_DELETE_DEVICES_ENDPOINT = "/alerts/delete/devices";
+	public static final String ALERTS_DELETE_CONTROLLERS_ENDPOINT = "/alerts/delete/controllers";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -64,6 +66,8 @@ public final class Constant {
 	public static final String SERVICES_DISPLAY_GROUP = "GVEService";
 	public static final String ALERTS_DISPLAY_GROUP = "Alerts";
 	public static final String ALL_GROUPS = "All";
+	/** Adapter-level group holding the delete-alerts buttons. */
+	public static final String ALERT_ACTIONS_GROUP = "Alert Actions";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
@@ -80,6 +84,9 @@ public final class Constant {
 	public static final String ACTION_CONTROLLER_TYPE_DEVICE = "Device";
 	public static final String ACTION_NAME_POWER = "Power";
 	public static final String POWER_PROPERTY = "Power";
+	public static final String DELETE_DEVICE_ALERTS_PROPERTY = "Device Alerts";
+	public static final String DELETE_CONTROLLER_ALERTS_PROPERTY = "Controller Alerts";
+	public static final String DELETE_BUTTON_LABEL = "Delete";
 
 	public static final String IPL_PRO_CONTROLLER_TYPE = "IPL Pro";
 	

@@ -696,16 +696,39 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 			}
 
+			List<AdvancedControllableProperty> controls = new ArrayList<>();
+			if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
+				putAlertActions(statistics, controls);
+			}
+
 			Map<String, String> dynamicStatistics = new HashMap<>();
 			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
 			dynamicStatistics.put(Constant.LAST_MONITORING_CYCLE_DURATION, String.valueOf(lastMonitoringCycleDuration));
 
 			this.localExtendedStatistics.setStatistics(statistics);
 			this.localExtendedStatistics.setDynamicStatistics(dynamicStatistics);
+			this.localExtendedStatistics.setControllableProperties(controls);
 		} finally {
 			this.reentrantLock.unlock();
 		}
 		return Collections.singletonList(this.localExtendedStatistics);
+	}
+
+	/**
+	 * Adds {@link Constant#ALERT_ACTIONS_GROUP}'s delete buttons, one per entity type that currently has
+	 * at least one alert (per {@link #cachedAlertSummaryByDevice}/{@link #cachedAlertSummaryByController}).
+	 */
+	private void putAlertActions(Map<String, String> statistics, List<AdvancedControllableProperty> controls) {
+		if (!cachedAlertSummaryByDevice.isEmpty()) {
+			String name = String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_DEVICE_ALERTS_PROPERTY);
+			Util.addAdvancedControlProperties(controls, statistics,
+					ControllablePropertyFactory.createButton(name, Constant.DELETE_BUTTON_LABEL, Constant.DELETE_BUTTON_LABEL, 0L), Constant.NONE);
+		}
+		if (!cachedAlertSummaryByController.isEmpty()) {
+			String name = String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_CONTROLLER_ALERTS_PROPERTY);
+			Util.addAdvancedControlProperties(controls, statistics,
+					ControllablePropertyFactory.createButton(name, Constant.DELETE_BUTTON_LABEL, Constant.DELETE_BUTTON_LABEL, 0L), Constant.NONE);
+		}
 	}
 
 	@Override
@@ -735,9 +758,23 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-		String aggregatedDeviceId = controllableProperty.getDeviceId();
 		String property = controllableProperty.getProperty();
-		if (StringUtils.isNullOrEmpty(aggregatedDeviceId, true) || StringUtils.isNullOrEmpty(property, true)) {
+		if (StringUtils.isNullOrEmpty(property, true)) {
+			return;
+		}
+
+		// Adapter-level controls have no device ID, so handle them before the routing below.
+		if (String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_DEVICE_ALERTS_PROPERTY).equals(property)) {
+			deleteDeviceAlerts();
+			return;
+		}
+		if (String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_CONTROLLER_ALERTS_PROPERTY).equals(property)) {
+			deleteControllerAlerts();
+			return;
+		}
+
+		String aggregatedDeviceId = controllableProperty.getDeviceId();
+		if (StringUtils.isNullOrEmpty(aggregatedDeviceId, true)) {
 			return;
 		}
 		int value = parseControlValue(controllableProperty.getValue());
@@ -843,12 +880,21 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		validateCommandResponse(response);
 	}
 
+	/** Deletes every device alert on the GVE server (not scoped to any filter). */
+	private void deleteDeviceAlerts() throws Exception {
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_DEVICES_ENDPOINT, null));
+		validateCommandResponse(response);
+	}
+
+	/** Deletes every controller alert on the GVE server (not scoped to any filter). */
+	private void deleteControllerAlerts() throws Exception {
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_CONTROLLERS_ENDPOINT, null));
+		validateCommandResponse(response);
+	}
+
 	/**
 	 * Checks a GVE command response's {@code ResponseStatus} and throws if it carries a non-blank
 	 * {@code ErrorCode}.
-	 *
-	 * @param response the raw response body from a {@link Constant#DEVICE_COMMAND_ENDPOINT}/{@link Constant#CONTROLLER_COMMAND_ENDPOINT} call
-	 * @throws Exception if the response can't be parsed, or if it reports a failure
 	 */
 	private void validateCommandResponse(String response) throws Exception {
 		APIResponse apiResponse = objectMapper.readValue(response, APIResponse.class);
