@@ -67,7 +67,7 @@ public final class Constant {
 	public static final String ALERTS_DISPLAY_GROUP = "Alerts";
 	public static final String ALL_GROUPS = "All";
 	/** Adapter-level group holding the delete-alerts buttons. */
-	public static final String ALERT_ACTIONS_GROUP = "Alert Actions";
+	public static final String ALERT_ACTIONS_GROUP = "AlertActions";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
