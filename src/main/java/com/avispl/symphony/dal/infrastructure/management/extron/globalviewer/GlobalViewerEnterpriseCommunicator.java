@@ -670,6 +670,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		this.reentrantLock.lock();
 		try {
 			this.authenticate();
+			updateActivePropertyGroups();
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
@@ -876,12 +877,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private void loadVersionProperties(Properties versionProperties) {
 		try {
 			versionProperties.load(this.getClass().getResourceAsStream("/version.properties"));
-			versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(), Constant.NOT_AVAILABLE);
 			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
 		}
+	}
+
+	/** Refreshes {@link General#ACTIVE_PROPERTY_GROUPS} from the current {@link #displayPropertyGroups}. */
+	private void updateActivePropertyGroups() {
+		String activeGroups = displayPropertyGroups.stream().sorted().collect(Collectors.joining(","));
+		versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(),
+				StringUtils.isNotNullOrEmpty(activeGroups) ? activeGroups : Constant.NOT_AVAILABLE);
 	}
 
 	/**
