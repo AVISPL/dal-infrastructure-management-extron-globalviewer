@@ -302,18 +302,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedControllers = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
-	 * of alerts sorted latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal}.
+	 * Alerts by {@link AlertProperty#DEVICE_ID}, sorted latest-{@link AlertProperty#EVENT_TIME}-first and
+	 * capped at {@link #alertEventsTotal}. Swapped in as a new immutable map each cycle (see
+	 * {@link #populateAlertList}) so a concurrent read never sees a partially-refilled map.
 	 */
-	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
+	private volatile Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.emptyMap();
 
-	/**
-	 * Cached GVE Alert data, keyed by {@link AlertProperty#CONTROLLER_ID} - mirrors {@link #cachedAlertsByDevice}
-	 * but for alerts routed to the controller they belong to (i.e. alerts with no resolvable
-	 * {@link AlertProperty#DEVICE_ID}) instead of a device. Kept separate from {@link #cachedAlertsByDevice}
-	 * since device IDs and controller IDs are independent numbering spaces and could otherwise collide.
-	 */
-	private final Map<String, List<Map<String, String>>> cachedAlertsByController = Collections.synchronizedMap(new HashMap<>());
+	/** Mirrors {@link #cachedAlertsByDevice}, keyed by {@link AlertProperty#CONTROLLER_ID} instead. */
+	private volatile Map<String, List<Map<String, String>>> cachedAlertsByController = Collections.emptyMap();
 
 	/**
 	 * GVE command action IDs from {@link Constant#GVE_COMMANDS_ENDPOINT}, keyed by {@code ControllerType:Name}
@@ -394,22 +390,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Per-device alert summary (true, uncapped total count and the distinct {@link AlertProperty#TYPE}/
-	 * {@link AlertProperty#MONITOR_NAME} values seen), keyed by {@link AlertProperty#DEVICE_ID}.
+	 * True, uncapped alert count/types/categories per {@link AlertProperty#DEVICE_ID}. Swapped in the same
+	 * way as {@link #cachedAlertsByDevice}.
 	 */
-	private final Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.synchronizedMap(new HashMap<>());
+	private volatile Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.emptyMap();
+
+	/** Mirrors {@link #cachedAlertSummaryByDevice}, keyed by {@link AlertProperty#CONTROLLER_ID} instead. */
+	private volatile Map<String, AlertSummary> cachedAlertSummaryByController = Collections.emptyMap();
 
 	/**
-	 * Per-controller alert summary, mirroring {@link #cachedAlertSummaryByDevice} but keyed by
-	 * {@link AlertProperty#CONTROLLER_ID} for alerts routed to a controller instead of a device.
-	 */
-	private final Map<String, AlertSummary> cachedAlertSummaryByController = Collections.synchronizedMap(new HashMap<>());
-
-	/**
-	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
-	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
-	 * more than one alert. {@code types}/{@code monitors} are kept in a case-insensitive {@link TreeSet} so
-	 * they're always alphabetical, without needing a separate sort step wherever they're displayed.
+	 * An entity's true (uncapped) alert count and distinct alert types/monitored categories - backs
+	 * {@link Constant#ACTIVE_ALERTS_GROUP}. {@code types}/{@code monitors} use a case-insensitive
+	 * {@link TreeSet} so they're always alphabetical.
 	 */
 	static final class AlertSummary {
 		int totalCount;
@@ -654,12 +646,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedSchedulingServiceInfo.clear();
 		cachedUdpListenerServiceInfo.clear();
 		cachedControllers.clear();
-		cachedAlertsByDevice.clear();
-		cachedAlertsByController.clear();
+		cachedAlertsByDevice = Collections.emptyMap();
+		cachedAlertsByController = Collections.emptyMap();
+		cachedAlertSummaryByDevice = Collections.emptyMap();
+		cachedAlertSummaryByController = Collections.emptyMap();
 		cachedModels.clear();
 		cachedManufacturers.clear();
-		cachedAlertSummaryByDevice.clear();
-		cachedAlertSummaryByController.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -969,11 +961,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Checks whether an alert matches {@link #alertTypeFilter} and {@link #alertMonitoredCategoryFilter}
-	 * (both must match when configured, matched case-insensitively; an empty filter is not applied).
-	 * Only gates whether the alert is added to {@link #cachedAlertsByDevice}/{@link #cachedAlertsByController}
-	 * (the displayed {@code Alert_XX} groups) - the entity's {@link AlertSummary} always reflects every alert
-	 * regardless of this filter.
+	 * Checks whether an alert matches {@link #alertTypeFilter}/{@link #alertMonitoredCategoryFilter} (both
+	 * must match when configured; empty filters are skipped). Only gates the displayed {@code Alert_XX}
+	 * list - {@link AlertSummary} always reflects every alert regardless.
 	 *
 	 * @param alert the alert's property name/value pairs, as built by {@link #parseAlerts}
 	 * @return {@code true} if the alert should be displayed
@@ -1162,8 +1152,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates {@link #cachedAlertsByDevice}/{@link #cachedAlertsByController} by making a GET request to
-	 * {@link Constant#ALERTS_ENDPOINT}, routing each alert to whichever it belongs to (see {@link #parseAlerts}).
+	 * Populates the alert caches from {@link Constant#ALERTS_ENDPOINT} (see {@link #parseAlerts}), parsing
+	 * into fresh local maps first and then swapping each into its {@code volatile} field, so a concurrent
+	 * read never sees a partially-refilled map.
 	 */
 	private void populateAlertList() {
 		try {
@@ -1173,22 +1164,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			Map<String, List<Map<String, String>>> nextControllerAlertCache = new HashMap<>();
 			Map<String, AlertSummary> nextControllerAlertSummaryCache = new HashMap<>();
 			parseAlerts(jsonResult, nextDeviceAlertCache, nextDeviceAlertSummaryCache, nextControllerAlertCache, nextControllerAlertSummaryCache);
-			synchronized (cachedAlertsByDevice) {
-				cachedAlertsByDevice.clear();
-				cachedAlertsByDevice.putAll(nextDeviceAlertCache);
-			}
-			synchronized (cachedAlertSummaryByDevice) {
-				cachedAlertSummaryByDevice.clear();
-				cachedAlertSummaryByDevice.putAll(nextDeviceAlertSummaryCache);
-			}
-			synchronized (cachedAlertsByController) {
-				cachedAlertsByController.clear();
-				cachedAlertsByController.putAll(nextControllerAlertCache);
-			}
-			synchronized (cachedAlertSummaryByController) {
-				cachedAlertSummaryByController.clear();
-				cachedAlertSummaryByController.putAll(nextControllerAlertSummaryCache);
-			}
+			cachedAlertsByDevice = Collections.unmodifiableMap(nextDeviceAlertCache);
+			cachedAlertSummaryByDevice = Collections.unmodifiableMap(nextDeviceAlertSummaryCache);
+			cachedAlertsByController = Collections.unmodifiableMap(nextControllerAlertCache);
+			cachedAlertSummaryByController = Collections.unmodifiableMap(nextControllerAlertSummaryCache);
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve alerts from response.", e);
 		}
