@@ -196,6 +196,27 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		return displayPropertyGroups.contains(Constant.ALL_GROUPS) || displayPropertyGroups.contains(group);
 	}
 
+	/** Enables/disables the device/controller power toggles and the {@link Constant#ALERT_ACTIONS_GROUP} delete buttons. */
+	private boolean configManagement = true;
+
+	/**
+	 * Retrieves {@link #configManagement}
+	 *
+	 * @return value of {@link #configManagement}
+	 */
+	public boolean isConfigManagement() {
+		return configManagement;
+	}
+
+	/**
+	 * Sets {@link #configManagement} value
+	 *
+	 * @param configManagement new value of {@link #configManagement}
+	 */
+	public void setConfigManagement(boolean configManagement) {
+		this.configManagement = configManagement;
+	}
+
 	/**
 	 * {@link AlertProperty#TYPE} values to filter displayed alerts by, matched case-insensitively; combined
 	 * with {@link #alertMonitoredCategoryFilter} using AND when both are configured (an empty filter isn't
@@ -710,8 +731,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	/**
 	 * Adds {@link Constant#ALERT_ACTIONS_GROUP}'s delete buttons, one per entity type that currently has
 	 * at least one alert (per {@link #cachedAlertSummaryByDevice}/{@link #cachedAlertSummaryByController}).
+	 * No-ops entirely when {@link #configManagement} is {@code false} - these buttons have no monitored
+	 * counterpart, so there's nothing left to show in that case.
 	 */
 	private void putAlertActions(Map<String, String> statistics, List<AdvancedControllableProperty> controls) {
+		if (!configManagement) {
+			return;
+		}
 		if (!cachedAlertSummaryByDevice.isEmpty()) {
 			String name = String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_DEVICE_ALERTS_PROPERTY);
 			Util.addAdvancedControlProperties(controls, statistics,
@@ -1602,8 +1628,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
-					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
-					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					if (configManagement) {
+						boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
+						Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					}
 					break;
 				default:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
@@ -1666,7 +1694,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 
 		List<AdvancedControllableProperty> controls = new ArrayList<>();
-		if (!isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
+		if (configManagement && !isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
 			boolean isActive = Constant.ACTIVE.equalsIgnoreCase(cachedData.get(ControllerProperty.STATUS.getName()));
 			Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
 		}
