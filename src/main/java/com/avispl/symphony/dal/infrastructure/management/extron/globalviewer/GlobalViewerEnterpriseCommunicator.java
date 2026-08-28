@@ -162,8 +162,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * {@link Constant#SERVICES_DISPLAY_GROUP}, {@link Constant#ALERTS_DISPLAY_GROUP}, {@link Constant#LIVE_STATUS_GROUP},
 	 * {@link Constant#CONTROLLER_NETWORK_GROUP}, {@link Constant#CONTROLLER_SYSTEM_GROUP}. Gates both the extra API
 	 * calls those groups need and whether their properties are added to the adapter/device/controller statistics.
+	 * Unrecognized values are dropped (see {@link #setDisplayPropertyGroups}).
 	 */
 	private Set<String> displayPropertyGroups = new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP));
+
+	/** Every value {@link #setDisplayPropertyGroups} accepts - anything else is silently dropped. */
+	private static final Set<String> VALID_DISPLAY_GROUPS = Set.of(Constant.ALL_GROUPS, Constant.GENERAL_GROUP,
+			Constant.GVE_ROOM_GROUP, Constant.GVE_LOCATION_GROUP, Constant.GVE_SYSTEM_GROUP,
+			Constant.SERVICES_DISPLAY_GROUP, Constant.ALERTS_DISPLAY_GROUP, Constant.LIVE_STATUS_GROUP,
+			Constant.CONTROLLER_NETWORK_GROUP, Constant.CONTROLLER_SYSTEM_GROUP);
 
 	/**
 	 * Retrieves {@link #displayPropertyGroups}.
@@ -171,18 +178,19 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * @return value of {@link #displayPropertyGroups}
 	 */
 	public String getDisplayPropertyGroups() {
-		return String.join(",", displayPropertyGroups);
+		return String.join(", ", displayPropertyGroups);
 	}
 
 	/**
-	 * Sets {@link #displayPropertyGroups} value; falls back to {@link Constant#GENERAL_GROUP}
-	 * when blank/unparsable.
+	 * Sets {@link #displayPropertyGroups} value; falls back to {@link Constant#GENERAL_GROUP} when blank,
+	 * unparsable, or none of the supplied values are recognized (see {@link #VALID_DISPLAY_GROUPS}).
 	 *
 	 * @param displayPropertyGroups new value of {@link #displayPropertyGroups}, comma-separated
 	 */
 	public void setDisplayPropertyGroups(String displayPropertyGroups) {
 		Set<String> parsed = StringUtils.isNullOrEmpty(displayPropertyGroups, true) ? Collections.emptySet()
-				: Arrays.stream(displayPropertyGroups.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+				: Arrays.stream(displayPropertyGroups.split(",")).map(String::trim)
+				.filter(VALID_DISPLAY_GROUPS::contains).collect(Collectors.toSet());
 		this.displayPropertyGroups = parsed.isEmpty() ? new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP)) : parsed;
 	}
 
@@ -194,6 +202,27 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 */
 	private boolean isGroupDisplayed(String group) {
 		return displayPropertyGroups.contains(Constant.ALL_GROUPS) || displayPropertyGroups.contains(group);
+	}
+
+	/** Enables/disables the device/controller power toggles and the {@link Constant#ALERT_ACTIONS_GROUP} delete buttons. */
+	private boolean configManagement = true;
+
+	/**
+	 * Retrieves {@link #configManagement}
+	 *
+	 * @return value of {@link #configManagement}
+	 */
+	public boolean isConfigManagement() {
+		return configManagement;
+	}
+
+	/**
+	 * Sets {@link #configManagement} value
+	 *
+	 * @param configManagement new value of {@link #configManagement}
+	 */
+	public void setConfigManagement(boolean configManagement) {
+		this.configManagement = configManagement;
 	}
 
 	/**
@@ -302,10 +331,14 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private final Map<String, Map<String, String>> cachedControllers = Collections.synchronizedMap(new HashMap<>());
 
 	/**
-	 * Cached GVE Alert data, keyed by {@link AlertProperty#DEVICE_ID}, each device holding its own list
-	 * of alerts sorted latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal}.
+	 * Alerts by {@link AlertProperty#DEVICE_ID}, sorted latest-{@link AlertProperty#EVENT_TIME}-first and
+	 * capped at {@link #alertEventsTotal}. Swapped in as a new immutable map each cycle (see
+	 * {@link #populateAlertList}) so a concurrent read never sees a partially-refilled map.
 	 */
-	private final Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.synchronizedMap(new HashMap<>());
+	private volatile Map<String, List<Map<String, String>>> cachedAlertsByDevice = Collections.emptyMap();
+
+	/** Mirrors {@link #cachedAlertsByDevice}, keyed by {@link AlertProperty#CONTROLLER_ID} instead. */
+	private volatile Map<String, List<Map<String, String>>> cachedAlertsByController = Collections.emptyMap();
 
 	/**
 	 * GVE command action IDs from {@link Constant#GVE_COMMANDS_ENDPOINT}, keyed by {@code ControllerType:Name}
@@ -386,16 +419,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Per-device alert summary (true, uncapped total count and the distinct {@link AlertProperty#TYPE}/
-	 * {@link AlertProperty#MONITOR_NAME} values seen), keyed by {@link AlertProperty#DEVICE_ID}.
+	 * True, uncapped alert count/types/categories per {@link AlertProperty#DEVICE_ID}. Swapped in the same
+	 * way as {@link #cachedAlertsByDevice}.
 	 */
-	private final Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.synchronizedMap(new HashMap<>());
+	private volatile Map<String, AlertSummary> cachedAlertSummaryByDevice = Collections.emptyMap();
+
+	/** Mirrors {@link #cachedAlertSummaryByDevice}, keyed by {@link AlertProperty#CONTROLLER_ID} instead. */
+	private volatile Map<String, AlertSummary> cachedAlertSummaryByController = Collections.emptyMap();
 
 	/**
-	 * A device's true (uncapped) alert count and the distinct alert types/monitored categories seen across all of
-	 * its alerts - backs the {@link Constant#ACTIVE_ALERTS_GROUP} group, shown whenever a device has
-	 * more than one alert. {@code types}/{@code monitors} are kept in a case-insensitive {@link TreeSet} so
-	 * they're always alphabetical, without needing a separate sort step wherever they're displayed.
+	 * An entity's true (uncapped) alert count and distinct alert types/monitored categories - backs
+	 * {@link Constant#ACTIVE_ALERTS_GROUP}. {@code types}/{@code monitors} use a case-insensitive
+	 * {@link TreeSet} so they're always alphabetical.
 	 */
 	static final class AlertSummary {
 		int totalCount;
@@ -640,10 +675,12 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		cachedSchedulingServiceInfo.clear();
 		cachedUdpListenerServiceInfo.clear();
 		cachedControllers.clear();
-		cachedAlertsByDevice.clear();
+		cachedAlertsByDevice = Collections.emptyMap();
+		cachedAlertsByController = Collections.emptyMap();
+		cachedAlertSummaryByDevice = Collections.emptyMap();
+		cachedAlertSummaryByController = Collections.emptyMap();
 		cachedModels.clear();
 		cachedManufacturers.clear();
-		cachedAlertSummaryByDevice.clear();
 		aggregatedDeviceList.clear();
 		this.localExtendedStatistics.getStatistics().clear();
 		super.internalDestroy();
@@ -654,6 +691,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		this.reentrantLock.lock();
 		try {
 			this.authenticate();
+			updateActivePropertyGroups();
 			var statistics = new HashMap<>(MonitoringUtil.generateProperties(
 					General.values(), null, property -> MonitoringUtil.mapToGeneral(this.versionProperties, property)
 			));
@@ -680,16 +718,44 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 			}
 
+			List<AdvancedControllableProperty> controls = new ArrayList<>();
+			if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
+				putAlertActions(statistics, controls);
+			}
+
 			Map<String, String> dynamicStatistics = new HashMap<>();
 			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
 			dynamicStatistics.put(Constant.LAST_MONITORING_CYCLE_DURATION, String.valueOf(lastMonitoringCycleDuration));
 
 			this.localExtendedStatistics.setStatistics(statistics);
 			this.localExtendedStatistics.setDynamicStatistics(dynamicStatistics);
+			this.localExtendedStatistics.setControllableProperties(controls);
 		} finally {
 			this.reentrantLock.unlock();
 		}
 		return Collections.singletonList(this.localExtendedStatistics);
+	}
+
+	/**
+	 * Adds {@link Constant#ALERT_ACTIONS_GROUP}'s delete buttons, one per entity type that currently has
+	 * at least one alert (per {@link #cachedAlertSummaryByDevice}/{@link #cachedAlertSummaryByController}).
+	 * No-ops entirely when {@link #configManagement} is {@code false} - these buttons have no monitored
+	 * counterpart, so there's nothing left to show in that case.
+	 */
+	private void putAlertActions(Map<String, String> statistics, List<AdvancedControllableProperty> controls) {
+		if (!configManagement) {
+			return;
+		}
+		if (!cachedAlertSummaryByDevice.isEmpty()) {
+			String name = String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_DEVICE_ALERTS_PROPERTY);
+			Util.addAdvancedControlProperties(controls, statistics,
+					ControllablePropertyFactory.createButton(name, Constant.DELETE_BUTTON_LABEL, Constant.DELETE_BUTTON_LABEL, 0L), Constant.NONE);
+		}
+		if (!cachedAlertSummaryByController.isEmpty()) {
+			String name = String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_CONTROLLER_ALERTS_PROPERTY);
+			Util.addAdvancedControlProperties(controls, statistics,
+					ControllablePropertyFactory.createButton(name, Constant.DELETE_BUTTON_LABEL, Constant.DELETE_BUTTON_LABEL, 0L), Constant.NONE);
+		}
 	}
 
 	@Override
@@ -719,9 +785,23 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	@Override
 	public void controlProperty(ControllableProperty controllableProperty) throws Exception {
-		String aggregatedDeviceId = controllableProperty.getDeviceId();
 		String property = controllableProperty.getProperty();
-		if (StringUtils.isNullOrEmpty(aggregatedDeviceId, true) || StringUtils.isNullOrEmpty(property, true)) {
+		if (StringUtils.isNullOrEmpty(property, true)) {
+			return;
+		}
+
+		// Adapter-level controls have no device ID, so handle them before the routing below.
+		if (String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_DEVICE_ALERTS_PROPERTY).equals(property)) {
+			deleteDeviceAlerts();
+			return;
+		}
+		if (String.format(Constant.PROPERTY_FORMAT, Constant.ALERT_ACTIONS_GROUP, Constant.DELETE_CONTROLLER_ALERTS_PROPERTY).equals(property)) {
+			deleteControllerAlerts();
+			return;
+		}
+
+		String aggregatedDeviceId = controllableProperty.getDeviceId();
+		if (StringUtils.isNullOrEmpty(aggregatedDeviceId, true)) {
 			return;
 		}
 		int value = parseControlValue(controllableProperty.getValue());
@@ -827,12 +907,21 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		validateCommandResponse(response);
 	}
 
+	/** Deletes every device alert on the GVE server (not scoped to any filter). */
+	private void deleteDeviceAlerts() throws Exception {
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_DEVICES_ENDPOINT, null, String.class));
+		validateCommandResponse(response);
+	}
+
+	/** Deletes every controller alert on the GVE server (not scoped to any filter). */
+	private void deleteControllerAlerts() throws Exception {
+		String response = this.withSessionRecovery(() -> this.doPut(Constant.ALERTS_DELETE_CONTROLLERS_ENDPOINT, null, String.class));
+		validateCommandResponse(response);
+	}
+
 	/**
 	 * Checks a GVE command response's {@code ResponseStatus} and throws if it carries a non-blank
 	 * {@code ErrorCode}.
-	 *
-	 * @param response the raw response body from a {@link Constant#DEVICE_COMMAND_ENDPOINT}/{@link Constant#CONTROLLER_COMMAND_ENDPOINT} call
-	 * @throws Exception if the response can't be parsed, or if it reports a failure
 	 */
 	private void validateCommandResponse(String response) throws Exception {
 		APIResponse apiResponse = objectMapper.readValue(response, APIResponse.class);
@@ -860,12 +949,18 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	private void loadVersionProperties(Properties versionProperties) {
 		try {
 			versionProperties.load(this.getClass().getResourceAsStream("/version.properties"));
-			versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(), Constant.NOT_AVAILABLE);
 			versionProperties.setProperty(General.ADAPTER_UPTIME.getProperty(), String.valueOf(this.adapterInitializationTimestamp));
 			versionProperties.setProperty(General.MONITORING_CYCLE_INTERVAL.getProperty(), String.valueOf(this.getMonitoringRate()));
 		} catch (IOException e) {
 			this.logger.error(Constant.READ_PROPERTIES_FILE_FAILED, e);
 		}
+	}
+
+	/** Refreshes {@link General#ACTIVE_PROPERTY_GROUPS} from the current {@link #displayPropertyGroups}. */
+	private void updateActivePropertyGroups() {
+		String activeGroups = displayPropertyGroups.stream().sorted().collect(Collectors.joining(", "));
+		versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(),
+				StringUtils.isNotNullOrEmpty(activeGroups) ? activeGroups : Constant.NOT_AVAILABLE);
 	}
 
 	/**
@@ -946,10 +1041,9 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Checks whether an alert matches {@link #alertTypeFilter} and {@link #alertMonitoredCategoryFilter}
-	 * (both must match when configured, matched case-insensitively; an empty filter is not applied).
-	 * Only gates whether the alert is added to {@link #cachedAlertsByDevice} (the displayed {@code Alert_XX}
-	 * groups) - the device's {@link AlertSummary} always reflects every alert regardless of this filter.
+	 * Checks whether an alert matches {@link #alertTypeFilter}/{@link #alertMonitoredCategoryFilter} (both
+	 * must match when configured; empty filters are skipped). Only gates the displayed {@code Alert_XX}
+	 * list - {@link AlertSummary} always reflects every alert regardless.
 	 *
 	 * @param alert the alert's property name/value pairs, as built by {@link #parseAlerts}
 	 * @return {@code true} if the alert should be displayed
@@ -1138,50 +1232,62 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	}
 
 	/**
-	 * Populates {@link #cachedAlertsByDevice} by making a GET request to {@link Constant#ALERTS_ENDPOINT},
-	 * grouping alerts under the device ID ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts
-	 * with no resolvable device ID are dropped.
+	 * Populates the alert caches from {@link Constant#ALERTS_ENDPOINT} (see {@link #parseAlerts}), parsing
+	 * into fresh local maps first and then swapping each into its {@code volatile} field, so a concurrent
+	 * read never sees a partially-refilled map.
 	 */
 	private void populateAlertList() {
 		try {
 			String jsonResult = this.withSessionRecovery(() -> this.doGet(Constant.ALERTS_ENDPOINT));
-			Map<String, List<Map<String, String>>> nextAlertCache = new HashMap<>();
-			Map<String, AlertSummary> nextAlertSummaryCache = new HashMap<>();
-			parseAlerts(jsonResult, nextAlertCache, nextAlertSummaryCache);
-			synchronized (cachedAlertsByDevice) {
-				cachedAlertsByDevice.clear();
-				cachedAlertsByDevice.putAll(nextAlertCache);
-			}
-			synchronized (cachedAlertSummaryByDevice) {
-				cachedAlertSummaryByDevice.clear();
-				cachedAlertSummaryByDevice.putAll(nextAlertSummaryCache);
-			}
+			Map<String, List<Map<String, String>>> nextDeviceAlertCache = new HashMap<>();
+			Map<String, AlertSummary> nextDeviceAlertSummaryCache = new HashMap<>();
+			Map<String, List<Map<String, String>>> nextControllerAlertCache = new HashMap<>();
+			Map<String, AlertSummary> nextControllerAlertSummaryCache = new HashMap<>();
+			parseAlerts(jsonResult, nextDeviceAlertCache, nextDeviceAlertSummaryCache, nextControllerAlertCache, nextControllerAlertSummaryCache);
+			cachedAlertsByDevice = Collections.unmodifiableMap(nextDeviceAlertCache);
+			cachedAlertSummaryByDevice = Collections.unmodifiableMap(nextDeviceAlertSummaryCache);
+			cachedAlertsByController = Collections.unmodifiableMap(nextControllerAlertCache);
+			cachedAlertSummaryByController = Collections.unmodifiableMap(nextControllerAlertSummaryCache);
 		} catch (Exception e) {
 			throw new RuntimeException("Unable to retrieve alerts from response.", e);
 		}
 	}
 
 	/**
-	 * Parses a raw {@link Constant#ALERTS_ENDPOINT} response, grouping alerts under the device ID
-	 * ({@link AlertProperty#DEVICE_ID}) each one belongs to. Alerts with no resolvable device ID are
-	 * dropped entirely. {@link #matchesAlertFilters} only controls which alerts make it into
-	 * {@code alertCache} (the displayed {@code Alert_XX} groups) - {@code alertSummaryCache} always
-	 * reflects every alert, filtered or not.
+	 * Parses a raw {@link Constant#ALERTS_ENDPOINT} response, routing each alert by which ID resolves:
+	 * a resolvable {@link AlertProperty#DEVICE_ID} makes it a device alert (grouped under
+	 * {@code deviceAlertCache}/{@code deviceAlertSummaryCache}), otherwise a resolvable
+	 * {@link AlertProperty#CONTROLLER_ID} makes it a controller alert (grouped under
+	 * {@code controllerAlertCache}/{@code controllerAlertSummaryCache}); alerts with neither are dropped
+	 * entirely. Device alerts also carry their own {@link AlertProperty#CONTROLLER_ID} (the controller they're
+	 * connected through) - that's just informational for them, not used for routing. {@link #matchesAlertFilters}
+	 * only controls which alerts make it into the {@code *AlertCache} maps (the displayed {@code Alert_XX}
+	 * groups) - the {@code *AlertSummaryCache} maps always reflect every alert, filtered or not.
 	 *
 	 * @param jsonResult the raw JSON response body
-	 * @param alertCache destination for alerts grouped by device ID, filtered by {@link #matchesAlertFilters},
-	 * sorted latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal} per device
-	 * @param alertSummaryCache destination for each device's true (unfiltered, uncapped) {@link AlertSummary}
+	 * @param deviceAlertCache destination for device alerts, filtered by {@link #matchesAlertFilters}, sorted
+	 * latest-{@link AlertProperty#EVENT_TIME}-first and capped at {@link #alertEventsTotal} per device
+	 * @param deviceAlertSummaryCache destination for each device's true (unfiltered, uncapped) {@link AlertSummary}
+	 * @param controllerAlertCache same as {@code deviceAlertCache}, but for controller alerts
+	 * @param controllerAlertSummaryCache same as {@code deviceAlertSummaryCache}, but for controller alerts
 	 * @throws Exception if the response cannot be parsed
 	 */
-	void parseAlerts(String jsonResult, Map<String, List<Map<String, String>>> alertCache, Map<String, AlertSummary> alertSummaryCache) throws Exception {
+	void parseAlerts(String jsonResult, Map<String, List<Map<String, String>>> deviceAlertCache, Map<String, AlertSummary> deviceAlertSummaryCache,
+			Map<String, List<Map<String, String>>> controllerAlertCache, Map<String, AlertSummary> controllerAlertSummaryCache) throws Exception {
 		JsonNode listResponse = objectMapper.readTree(jsonResult);
 		if (listResponse != null && listResponse.has(Constant.ALERTS) && !listResponse.get(Constant.ALERTS).isEmpty()) {
 			for (JsonNode node : listResponse.path(Constant.ALERTS)) {
 				String deviceId = extractValue(node, AlertProperty.DEVICE_ID);
-				if (Constant.NOT_AVAILABLE.equals(deviceId)) {
+				String controllerId = extractValue(node, AlertProperty.CONTROLLER_ID);
+				boolean isDeviceAlert = !Constant.NOT_AVAILABLE.equals(deviceId);
+				boolean isControllerAlert = !isDeviceAlert && !Constant.NOT_AVAILABLE.equals(controllerId);
+				if (!isDeviceAlert && !isControllerAlert) {
 					continue;
 				}
+				String ownerId = isDeviceAlert ? deviceId : controllerId;
+				Map<String, List<Map<String, String>>> alertCache = isDeviceAlert ? deviceAlertCache : controllerAlertCache;
+				Map<String, AlertSummary> alertSummaryCache = isDeviceAlert ? deviceAlertSummaryCache : controllerAlertSummaryCache;
+
 				Map<String, String> alert = new HashMap<>();
 				for (AlertProperty property : AlertProperty.values()) {
 					String value = extractValue(node, property);
@@ -1193,7 +1299,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 				// The summary always reflects every alert regardless of alertTypeFilter/alertMonitoredCategoryFilter -
 				// those filters only decide what's added to alertCache below (the displayed Alert_XX groups).
-				AlertSummary summary = alertSummaryCache.computeIfAbsent(deviceId, id -> new AlertSummary());
+				AlertSummary summary = alertSummaryCache.computeIfAbsent(ownerId, id -> new AlertSummary());
 				summary.totalCount++;
 				String type = alert.get(AlertProperty.TYPE.getName());
 				if (StringUtils.isNotNullOrEmpty(type) && !Constant.NOT_AVAILABLE.equals(type)) {
@@ -1205,18 +1311,28 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				}
 
 				if (matchesAlertFilters(alert)) {
-					alertCache.computeIfAbsent(deviceId, id -> new ArrayList<>()).add(alert);
+					alertCache.computeIfAbsent(ownerId, id -> new ArrayList<>()).add(alert);
 				}
 			}
 		}
-		// Sort each device's alerts latest-EventTime-first, then drop everything beyond alertEventsTotal.
-		// Sorting happens before capping so the alerts that survive the cap are genuinely the most recent
-		// ones, rather than an arbitrary prefix in whatever order the API returned them in. The true
-		// count/type/monitor values tracked above via alertSummaryCache are unaffected by this cap.
-		for (List<Map<String, String>> alertsForDevice : alertCache.values()) {
-			alertsForDevice.sort(Comparator.comparing(GlobalViewerEnterpriseCommunicator::parseEventTime).reversed());
-			if (alertsForDevice.size() > alertEventsTotal) {
-				alertsForDevice.subList(alertEventsTotal, alertsForDevice.size()).clear();
+		sortAndCapAlerts(deviceAlertCache);
+		sortAndCapAlerts(controllerAlertCache);
+	}
+
+	/**
+	 * Sorts each entry's alerts latest-{@link AlertProperty#EVENT_TIME}-first, then drops everything beyond
+	 * {@link #alertEventsTotal}. Sorting happens before capping so the alerts that survive the cap are
+	 * genuinely the most recent ones, rather than an arbitrary prefix in whatever order the API returned them
+	 * in. The true count/type/monitor values tracked separately via the matching {@code AlertSummary} cache
+	 * are unaffected by this cap.
+	 *
+	 * @param alertCache the alert cache to sort/cap in place
+	 */
+	private void sortAndCapAlerts(Map<String, List<Map<String, String>>> alertCache) {
+		for (List<Map<String, String>> alerts : alertCache.values()) {
+			alerts.sort(Comparator.comparing(GlobalViewerEnterpriseCommunicator::parseEventTime).reversed());
+			if (alerts.size() > alertEventsTotal) {
+				alerts.subList(alertEventsTotal, alerts.size()).clear();
 			}
 		}
 	}
@@ -1520,8 +1636,10 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
-					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
-					Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					if (configManagement) {
+						boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
+						Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					}
 					break;
 				default:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
@@ -1539,7 +1657,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			}
 		}
 		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
-			putDeviceAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId));
+			putAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId), AlertProperty.DEVICE_ID);
 		}
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
@@ -1584,9 +1702,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 
 		List<AdvancedControllableProperty> controls = new ArrayList<>();
-		if (!isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
+		if (configManagement && !isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
 			boolean isActive = Constant.ACTIVE.equalsIgnoreCase(cachedData.get(ControllerProperty.STATUS.getName()));
 			Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+		}
+
+		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
+			putAlerts(stats, cachedAlertsByController.get(controllerId), cachedAlertSummaryByController.get(controllerId), AlertProperty.CONTROLLER_ID);
 		}
 
 		aggregatedDevice.setProperties(stats);
@@ -1611,23 +1733,37 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * Puts the given alerts into {@code stats} as indexed {@code Alert_XX} sub-groups (skipped when
 	 * {@code alerts} is {@code null}), plus an always-present {@link Constant#ACTIVE_ALERTS_GROUP} group
 	 * ({@code TotalCount}, {@code Types}, {@code MonitoredCategories} - {@link Constant#NOT_AVAILABLE} when
-	 * there are none).
+	 * there are none). Used for both devices and controllers - {@code ownIdProperty} is whichever of
+	 * {@link AlertProperty#DEVICE_ID}/{@link AlertProperty#CONTROLLER_ID} identifies the entity {@code stats}
+	 * belongs to, and is omitted from each {@code Alert_XX} sub-group since it's redundant there (it's always
+	 * that same entity's own ID). The other ID property is kept only when it actually resolves for that alert
+	 * - e.g. a device's alerts still show which controller they're connected through, but a controller alert's
+	 * unresolved {@link AlertProperty#DEVICE_ID} (always {@link Constant#NOT_AVAILABLE} for a controller alert)
+	 * is omitted entirely rather than showing up as {@code DeviceID=N/A}.
 	 *
-	 * @param stats the destination device statistics map
-	 * @param alerts the device's alerts, sorted latest-first, or {@code null} if none
-	 * @param summary the device's true (uncapped) alert summary, or {@code null} if none
+	 * @param stats the destination device/controller statistics map
+	 * @param alerts the entity's alerts, sorted latest-first, or {@code null} if none
+	 * @param summary the entity's true (uncapped) alert summary, or {@code null} if none
+	 * @param ownIdProperty {@link AlertProperty#DEVICE_ID} when {@code stats} is a device's, or
+	 * {@link AlertProperty#CONTROLLER_ID} when it's a controller's
 	 */
-	void putDeviceAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary) {
+	void putAlerts(Map<String, String> stats, List<Map<String, String>> alerts, AlertSummary summary, AlertProperty ownIdProperty) {
 		if (alerts != null) {
 			int index = 1;
 			for (Map<String, String> alert : alerts) {
 				String groupName = String.format(Constant.INDEXED_GROUP_FORMAT, Constant.ALERT_GROUP, String.format("%02d", index));
 				for (AlertProperty property : AlertProperty.values()) {
-					if (property == AlertProperty.DEVICE_ID) {
+					if (property == ownIdProperty) {
+						continue;
+					}
+					String value = alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE);
+					boolean isUnresolvedIdProperty = (property == AlertProperty.DEVICE_ID || property == AlertProperty.CONTROLLER_ID)
+							&& Constant.NOT_AVAILABLE.equals(value);
+					if (isUnresolvedIdProperty) {
 						continue;
 					}
 					String key = String.format(Constant.PROPERTY_FORMAT, groupName, property.getName());
-					stats.put(key, alert.getOrDefault(property.getName(), Constant.NOT_AVAILABLE));
+					stats.put(key, value);
 				}
 				index++;
 			}

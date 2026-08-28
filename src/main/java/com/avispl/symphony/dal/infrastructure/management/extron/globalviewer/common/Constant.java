@@ -47,6 +47,8 @@ public final class Constant {
 	public static final String MONITORING_SERVICE_ENDPOINT = "/services/monitoring";
 	public static final String SCHEDULING_SERVICE_ENDPOINT = "/services/scheduling";
 	public static final String UDP_LISTENER_SERVICE_ENDPOINT = "/services/udplistener";
+	public static final String ALERTS_DELETE_DEVICES_ENDPOINT = "/alerts/delete/devices";
+	public static final String ALERTS_DELETE_CONTROLLERS_ENDPOINT = "/alerts/delete/controllers";
 
 	//	Groups
 	public static final String GENERAL_GROUP = "General";
@@ -56,7 +58,7 @@ public final class Constant {
 	public static final String GVE_SYSTEM_GROUP = "GVESystem";
 	public static final String MONITORING_SERVICE_GROUP = "GVEService_Monitoring";
 	public static final String SCHEDULING_SERVICE_GROUP = "GVEService_Scheduling";
-	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEService_UdpListener";
+	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEService_UDPListener";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
@@ -64,6 +66,8 @@ public final class Constant {
 	public static final String SERVICES_DISPLAY_GROUP = "GVEService";
 	public static final String ALERTS_DISPLAY_GROUP = "Alerts";
 	public static final String ALL_GROUPS = "All";
+	/** Adapter-level group holding the delete-alerts buttons. */
+	public static final String ALERT_ACTIONS_GROUP = "AlertActions";
 
 	//	Response payload keys
 	public static final String DEVICES = "Devices";
@@ -80,6 +84,9 @@ public final class Constant {
 	public static final String ACTION_CONTROLLER_TYPE_DEVICE = "Device";
 	public static final String ACTION_NAME_POWER = "Power";
 	public static final String POWER_PROPERTY = "Power";
+	public static final String DELETE_DEVICE_ALERTS_PROPERTY = "DeviceAlerts";
+	public static final String DELETE_CONTROLLER_ALERTS_PROPERTY = "ControllerAlerts";
+	public static final String DELETE_BUTTON_LABEL = "Delete";
 
 	public static final String IPL_PRO_CONTROLLER_TYPE = "IPL Pro";
 	

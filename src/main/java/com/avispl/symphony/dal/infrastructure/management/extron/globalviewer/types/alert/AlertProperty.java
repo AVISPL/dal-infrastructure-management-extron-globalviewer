@@ -9,7 +9,9 @@ import lombok.experimental.FieldDefaults;
 import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.base.FieldProperty;
 
 /**
- * The device alert properties, sourced from {@code /alerts}.
+ * The alert properties, sourced from {@code /alerts}. Covers both device and controller alerts - the two
+ * are told apart by which of {@link #DEVICE_ID}/{@link #CONTROLLER_ID} resolves (see
+ * {@code GlobalViewerEnterpriseCommunicator#parseAlerts}).
  *
  * @author Ritik Madaan / Symphony Dev Team
  * @since 1.0.0
@@ -19,6 +21,9 @@ import com.avispl.symphony.dal.infrastructure.management.extron.globalviewer.bas
 @AllArgsConstructor
 public enum AlertProperty implements FieldProperty {
 	DEVICE_ID("DeviceID", "/DeviceId", "", false),
+	/** The controller an alert belongs to - always present for controller alerts, and also present (pointing
+	 * to the controller it's connected through) on device alerts. */
+	CONTROLLER_ID("ControllerID", "/ControllerId", "", false),
 	HISTORY_LOG_ID("MonitorHistoryLogID", "/MonitorHistoryLogId", "", false),
 	MONITOR_NAME("MonitoredCategory", "/MonitorName", "", false),
 	IP_ADDRESS("IPAddress", "/IPAddress", "", false),
