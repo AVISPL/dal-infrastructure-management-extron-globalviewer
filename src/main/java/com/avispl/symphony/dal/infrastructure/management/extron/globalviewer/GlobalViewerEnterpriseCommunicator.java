@@ -162,8 +162,15 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * {@link Constant#SERVICES_DISPLAY_GROUP}, {@link Constant#ALERTS_DISPLAY_GROUP}, {@link Constant#LIVE_STATUS_GROUP},
 	 * {@link Constant#CONTROLLER_NETWORK_GROUP}, {@link Constant#CONTROLLER_SYSTEM_GROUP}. Gates both the extra API
 	 * calls those groups need and whether their properties are added to the adapter/device/controller statistics.
+	 * Unrecognized values are dropped (see {@link #setDisplayPropertyGroups}).
 	 */
 	private Set<String> displayPropertyGroups = new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP));
+
+	/** Every value {@link #setDisplayPropertyGroups} accepts - anything else is silently dropped. */
+	private static final Set<String> VALID_DISPLAY_GROUPS = Set.of(Constant.ALL_GROUPS, Constant.GENERAL_GROUP,
+			Constant.GVE_ROOM_GROUP, Constant.GVE_LOCATION_GROUP, Constant.GVE_SYSTEM_GROUP,
+			Constant.SERVICES_DISPLAY_GROUP, Constant.ALERTS_DISPLAY_GROUP, Constant.LIVE_STATUS_GROUP,
+			Constant.CONTROLLER_NETWORK_GROUP, Constant.CONTROLLER_SYSTEM_GROUP);
 
 	/**
 	 * Retrieves {@link #displayPropertyGroups}.
@@ -171,18 +178,19 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 	 * @return value of {@link #displayPropertyGroups}
 	 */
 	public String getDisplayPropertyGroups() {
-		return String.join(",", displayPropertyGroups);
+		return String.join(", ", displayPropertyGroups);
 	}
 
 	/**
-	 * Sets {@link #displayPropertyGroups} value; falls back to {@link Constant#GENERAL_GROUP}
-	 * when blank/unparsable.
+	 * Sets {@link #displayPropertyGroups} value; falls back to {@link Constant#GENERAL_GROUP} when blank,
+	 * unparsable, or none of the supplied values are recognized (see {@link #VALID_DISPLAY_GROUPS}).
 	 *
 	 * @param displayPropertyGroups new value of {@link #displayPropertyGroups}, comma-separated
 	 */
 	public void setDisplayPropertyGroups(String displayPropertyGroups) {
 		Set<String> parsed = StringUtils.isNullOrEmpty(displayPropertyGroups, true) ? Collections.emptySet()
-				: Arrays.stream(displayPropertyGroups.split(",")).map(String::trim).filter(StringUtils::isNotNullOrEmpty).collect(Collectors.toSet());
+				: Arrays.stream(displayPropertyGroups.split(",")).map(String::trim)
+				.filter(VALID_DISPLAY_GROUPS::contains).collect(Collectors.toSet());
 		this.displayPropertyGroups = parsed.isEmpty() ? new HashSet<>(Collections.singletonList(Constant.GENERAL_GROUP)) : parsed;
 	}
 
@@ -950,7 +958,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 
 	/** Refreshes {@link General#ACTIVE_PROPERTY_GROUPS} from the current {@link #displayPropertyGroups}. */
 	private void updateActivePropertyGroups() {
-		String activeGroups = displayPropertyGroups.stream().sorted().collect(Collectors.joining(","));
+		String activeGroups = displayPropertyGroups.stream().sorted().collect(Collectors.joining(", "));
 		versionProperties.setProperty(General.ACTIVE_PROPERTY_GROUPS.getProperty(),
 				StringUtils.isNotNullOrEmpty(activeGroups) ? activeGroups : Constant.NOT_AVAILABLE);
 	}
