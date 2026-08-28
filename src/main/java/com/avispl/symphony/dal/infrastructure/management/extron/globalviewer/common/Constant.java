@@ -56,7 +56,7 @@ public final class Constant {
 	public static final String GVE_SYSTEM_GROUP = "GVESystem";
 	public static final String MONITORING_SERVICE_GROUP = "GVEService_Monitoring";
 	public static final String SCHEDULING_SERVICE_GROUP = "GVEService_Scheduling";
-	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEService_UdpListener";
+	public static final String UDP_LISTENER_SERVICE_GROUP = "GVEService_UDPListener";
 	public static final String CONTROLLER_NETWORK_GROUP = "Network";
 	public static final String CONTROLLER_SYSTEM_GROUP = "System";
 	public static final String ALERT_GROUP = "Alert";
