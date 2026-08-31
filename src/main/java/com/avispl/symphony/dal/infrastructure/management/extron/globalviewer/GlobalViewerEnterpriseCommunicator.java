@@ -1633,6 +1633,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				case DEVICE_ID:
 				case DEVICE_NAME:
 				case MODEL_ID:
+				case DEVICE_TYPE:
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
