@@ -724,7 +724,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			}
 
 			Map<String, String> dynamicStatistics = new HashMap<>();
-			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size()));
+			dynamicStatistics.put(Constant.MONITORED_DEVICES_TOTAL, String.valueOf(cachedMonitoringDevice.size() + cachedControllers.size()));
 			dynamicStatistics.put(Constant.LAST_MONITORING_CYCLE_DURATION, String.valueOf(lastMonitoringCycleDuration));
 
 			this.localExtendedStatistics.setStatistics(statistics);
@@ -1633,6 +1633,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 				case DEVICE_ID:
 				case DEVICE_NAME:
 				case MODEL_ID:
+				case DEVICE_TYPE:
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
