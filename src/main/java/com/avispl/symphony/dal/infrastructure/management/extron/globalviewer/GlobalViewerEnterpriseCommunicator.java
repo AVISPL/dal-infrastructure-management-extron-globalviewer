@@ -1637,9 +1637,11 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
+					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 					if (configManagement) {
-						boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 						Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					} else {
+						stats.put(Constant.POWER_PROPERTY, isOn ? Constant.ON : Constant.OFF);
 					}
 					break;
 				default:
@@ -1660,6 +1662,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
 			putAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId), AlertProperty.DEVICE_ID);
 		}
+		ensureNonEmptyControls(controls);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
@@ -1703,19 +1706,36 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 
 		List<AdvancedControllableProperty> controls = new ArrayList<>();
-		if (configManagement && !isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
+		if (!isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
 			boolean isActive = Constant.ACTIVE.equalsIgnoreCase(cachedData.get(ControllerProperty.STATUS.getName()));
-			Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+			if (configManagement) {
+				Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+			} else {
+				stats.put(Constant.POWER_PROPERTY, isActive ? Constant.ON : Constant.OFF);
+			}
 		}
 
 		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
 			putAlerts(stats, cachedAlertsByController.get(controllerId), cachedAlertSummaryByController.get(controllerId), AlertProperty.CONTROLLER_ID);
 		}
 
+		ensureNonEmptyControls(controls);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Adds a single blank, no-op control (no matching stats entry) when {@code controls} would otherwise be
+	 * empty - Symphony doesn't appear to apply a poll's other changes (e.g. a control that just got removed)
+	 * for a device/controller whose controllableProperties list goes fully empty, so this keeps the list
+	 * non-empty without exposing anything meaningful.
+	 */
+	private void ensureNonEmptyControls(List<AdvancedControllableProperty> controls) {
+		if (controls.isEmpty()) {
+			controls.add(ControllablePropertyFactory.createText(Constant.EMPTY, Constant.EMPTY));
+		}
 	}
 
 	/**
