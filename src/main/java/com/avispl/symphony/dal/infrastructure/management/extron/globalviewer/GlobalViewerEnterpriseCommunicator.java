@@ -1662,6 +1662,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
 			putAlerts(stats, cachedAlertsByDevice.get(deviceId), cachedAlertSummaryByDevice.get(deviceId), AlertProperty.DEVICE_ID);
 		}
+		ensureNonEmptyControls(controls);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
@@ -1718,10 +1719,23 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			putAlerts(stats, cachedAlertsByController.get(controllerId), cachedAlertSummaryByController.get(controllerId), AlertProperty.CONTROLLER_ID);
 		}
 
+		ensureNonEmptyControls(controls);
 		aggregatedDevice.setProperties(stats);
 		aggregatedDevice.setControllableProperties(controls);
 		aggregatedDevice.setTimestamp(System.currentTimeMillis());
 		return aggregatedDevice;
+	}
+
+	/**
+	 * Adds a single blank, no-op control (no matching stats entry) when {@code controls} would otherwise be
+	 * empty - Symphony doesn't appear to apply a poll's other changes (e.g. a control that just got removed)
+	 * for a device/controller whose controllableProperties list goes fully empty, so this keeps the list
+	 * non-empty without exposing anything meaningful.
+	 */
+	private void ensureNonEmptyControls(List<AdvancedControllableProperty> controls) {
+		if (controls.isEmpty()) {
+			controls.add(ControllablePropertyFactory.createText(Constant.EMPTY, Constant.EMPTY));
+		}
 	}
 
 	/**
