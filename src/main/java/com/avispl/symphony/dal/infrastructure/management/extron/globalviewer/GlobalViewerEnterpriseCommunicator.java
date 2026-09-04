@@ -1641,7 +1641,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					if (configManagement) {
 						Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
 					} else {
-						stats.put(Constant.POWER_PROPERTY, isOn ? "1" : "0");
+						stats.put(Constant.POWER_PROPERTY, isOn ? Constant.ON : Constant.OFF);
 					}
 					break;
 				default:
@@ -1710,7 +1710,7 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 			if (configManagement) {
 				Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
 			} else {
-				stats.put(Constant.POWER_PROPERTY, isActive ? "1" : "0");
+				stats.put(Constant.POWER_PROPERTY, isActive ? Constant.ON : Constant.OFF);
 			}
 		}
 
