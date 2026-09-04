@@ -1637,9 +1637,11 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 					continue;
 				case POWER_STATUS:
 					putGroupedPropertyIfDisplayed(stats, cachedData, info);
+					boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 					if (configManagement) {
-						boolean isOn = Constant.ON.equalsIgnoreCase(cachedData.get(info.getName()));
 						Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isOn ? 1 : 0), isOn ? "1" : "0" );
+					} else {
+						stats.put(Constant.POWER_PROPERTY, isOn ? "1" : "0");
 					}
 					break;
 				default:
@@ -1703,9 +1705,13 @@ public class GlobalViewerEnterpriseCommunicator extends BaseCommunicator impleme
 		}
 
 		List<AdvancedControllableProperty> controls = new ArrayList<>();
-		if (configManagement && !isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
+		if (!isProController(cachedData.get(ControllerProperty.TYPE.getName()))) {
 			boolean isActive = Constant.ACTIVE.equalsIgnoreCase(cachedData.get(ControllerProperty.STATUS.getName()));
-			Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+			if (configManagement) {
+				Util.addAdvancedControlProperties(controls, stats, ControllablePropertyFactory.createSwitch(Constant.POWER_PROPERTY, isActive ? 1 : 0), isActive ? "1" : "0");
+			} else {
+				stats.put(Constant.POWER_PROPERTY, isActive ? "1" : "0");
+			}
 		}
 
 		if (isGroupDisplayed(Constant.ALERTS_DISPLAY_GROUP)) {
