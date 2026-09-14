@@ -84,8 +84,8 @@ public final class Constant {
 	public static final String ACTION_CONTROLLER_TYPE_DEVICE = "Device";
 	public static final String ACTION_NAME_POWER = "Power";
 	public static final String POWER_PROPERTY = "Power";
-	public static final String DELETE_DEVICE_ALERTS_PROPERTY = "DeviceAlerts";
-	public static final String DELETE_CONTROLLER_ALERTS_PROPERTY = "ControllerAlerts";
+	public static final String DELETE_DEVICE_ALERTS_PROPERTY = "DeleteDeviceAlerts";
+	public static final String DELETE_CONTROLLER_ALERTS_PROPERTY = "DeleteControllerAlerts";
 	public static final String DELETE_BUTTON_LABEL = "Delete";
 
 	public static final String IPL_PRO_CONTROLLER_TYPE = "IPL Pro";
