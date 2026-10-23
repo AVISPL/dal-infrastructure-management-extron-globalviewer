@@ -67,8 +67,8 @@ public abstract class BaseCommunicator extends RestCommunicator {
 				throw new FailedLoginException("Invalid authentication credentials for " + loginUrl);
 			}
 			//	Validate the session ID
-			this.sessionID = Optional.of(response.getHeaders().get(HttpHeaders.SET_COOKIE))
-					.filter(cookies -> !cookies.isEmpty()).map(cookies -> cookies.get(0))
+			//	getFirst() instead of get(): HttpHeaders.get has different signatures in Spring 6 and 7
+			this.sessionID = Optional.ofNullable(response.getHeaders().getFirst(HttpHeaders.SET_COOKIE))
 					.orElseThrow(() -> new FailedLoginException("Failed to authenticate, session ID missing from response header"));
 			if (StringUtils.isNullOrEmpty(this.sessionID, true)) {
 				throw new FailedLoginException("Failed to authenticate, the session ID is null or empty");
